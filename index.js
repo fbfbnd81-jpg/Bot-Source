@@ -1,6 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
-const yts = require('yt-search');
 
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
@@ -36,41 +35,12 @@ bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
     const userName = ctx.from.first_name || 'صديقي';
     ctx.reply(
-        `أهلاً بك يا قلبي 🫶 ــ ${userName}\n\n• أنا بوتك المتكامل للأغاني والحماية وإدارة القروب.`,
+        `أهلاً بك يا قلبي 🫶 ــ ${userName}\n\n• أنا بوتك المتكامل للحماية وإدارة القروب.`,
         Markup.inlineKeyboard([
             [Markup.button.url('➕ أضفني في مجموعتك', `https://t.me/${botUsername}?startgroup=true`)],
             [Markup.button.url('👤 المطور (توريف / إيفي)', 'https://t.me/j4xa7')]
         ])
     );
-});
-
-// نظام الأغاني
-bot.hears(/^يوت\s+(.+)$/, async (ctx) => {
-    const query = ctx.match[1];
-    try {
-        const waitMsg = await ctx.reply(`🎵 جارٍ البحث عن [ ${query} ]...`);
-        const searchResult = await yts(query);
-        const videos = searchResult.videos;
-
-        if (!videos || videos.length === 0) {
-            return ctx.telegram.editMessageText(ctx.chat.id, waitMsg.message_id, null, '⚠️ عذراً، لم أجد هذه الأغنية!');
-        }
-
-        const song = videos[0];
-        const botUsername = ctx.botInfo.username;
-        try { await ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id); } catch (e) {}
-
-        await ctx.replyWithAudio(song.url, {
-            title: song.title,
-            performer: song.author.name,
-            caption: `🎵 ${song.title}\n👤 ${song.author.name}\n⏱️ ${song.timestamp}\n• @${botUsername}`,
-            ...Markup.inlineKeyboard([
-                [Markup.button.url('▶️ استماع للأغنية', song.url)]
-            ])
-        });
-    } catch (error) {
-        ctx.reply('❌ حدث خطأ أثناء جلب الأغنية، تأكد من اسم الأغنية.');
-    }
 });
 
 // أوامر القفل والفتح
