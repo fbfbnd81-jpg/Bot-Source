@@ -1,9 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 
-// سيرفر وهمي عشان ريلواي يثبت البوت وما يصير أحمر
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -16,32 +13,9 @@ const adminIds = [];
 const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
-
-// ملفات حفظ الهمسات والجلسات عشان ما تضيع أبداً
-const SESSIONS_FILE = path.join(__dirname, 'whisper_sessions.json');
-const STORE_FILE = path.join(__dirname, 'whisper_store.json');
-
-function loadJson(file) {
-    try {
-        if (fs.existsSync(file)) {
-            return JSON.parse(fs.readFileSync(file, 'utf8'));
-        }
-    } catch (e) {}
-    return {};
-}
-
-function saveJson(file, data) {
-    try {
-        fs.writeFileSync(file, JSON.stringify(data, null, 2));
-    } catch (e) {}
-}
-
-let whisperSessions = loadJson(SESSIONS_FILE);
-let whisperStore = loadJson(STORE_FILE);
+const whisperStore = {}; 
 
 let gamesEnabled = true;
-
-const ranksHierarchy = ['عضو', 'مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'Dev²🎖', 'Dev🎖️'];
 
 function getUserRole(ctx) {
     if (!ctx.from || !ctx.chat) return 'عضو';
@@ -61,20 +35,18 @@ bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
     const payload = ctx.startPayload;
 
-    // إذا دخل المستخدم من رابط الهمسة في الخاص
     if (payload && payload.startsWith('wh_')) {
         const parts = payload.split('_');
         const targetId = parts[1];
         const targetName = decodeURIComponent(parts[2]);
         const chatId = parts[3];
 
-        whisperSessions[ctx.from.id] = {
+        whisperStore[ctx.from.id] = {
             targetId: targetId,
             targetName: targetName,
             chatId: chatId,
             senderName: ctx.from.first_name || 'صديق'
         };
-        saveJson(SESSIONS_FILE, whisperSessions);
 
         return ctx.reply(`✍️ أهلاً بك يا ${ctx.from.first_name}!\n\n• أرسل الآن نص الهمسة الموجهة إلى [ ${targetName} ] في رسالة هنا، وسيتم نشرها في الجروب سراً.`);
     }
@@ -89,15 +61,12 @@ bot.start((ctx) => {
     );
 });
 
-// استقبال رسائل الهمسة في الخاص وإرسالها للجروب فوراً
 bot.on('message', async (ctx, next) => {
     try {
-        if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id] && ctx.message.text) {
-            const data = whisperSessions[ctx.from.id];
+        if (ctx.chat.type === 'private' && whisperStore[ctx.from.id] && ctx.message.text) {
+            const data = whisperStore[ctx.from.id];
             const whisperText = ctx.message.text;
-            
-            delete whisperSessions[ctx.from.id];
-            saveJson(SESSIONS_FILE, whisperSessions);
+            delete whisperStore[ctx.from.id];
 
             const viewId = `vw_${Date.now()}_${Math.random()}`;
             whisperStore[viewId] = {
@@ -105,9 +74,7 @@ bot.on('message', async (ctx, next) => {
                 targetId: data.targetId,
                 senderName: data.senderName
             };
-            saveJson(STORE_FILE, whisperStore);
 
-            // إرسال رسالة الهمسة للجروب بشكل سري وموجه
             await bot.telegram.sendMessage(
                 data.chatId,
                 `• يا حلو ⟵ ${data.targetName}\n• وصلتك همسة سرية جديدة من ⟵ ${data.senderName}\n• انت وحدك تقدر تشوفها`,
@@ -120,7 +87,6 @@ bot.on('message', async (ctx, next) => {
             return ctx.reply('✅ تم إرسال همستك بنجاح إلى الجروب بشكل سري!');
         }
 
-        // احصائيات وكتم في الجروبات
         if (ctx.chat && ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             const chatId = ctx.chat.id;
             const userId = ctx.from.id;
@@ -142,7 +108,6 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
-// --- نظام الهمسات (عند كتابة اهمس أو همسه بالجروب) ---
 bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
@@ -166,7 +131,6 @@ bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     );
 });
 
-// قراءة الهمسة عبر النافذة المنبثقة (Alert)
 bot.action(/^read_wh_(.+)$/, (ctx) => {
     const viewId = ctx.match[1];
     const whisper = whisperStore[viewId];
@@ -182,7 +146,6 @@ bot.action(/^read_wh_(.+)$/, (ctx) => {
     return ctx.answerCbQuery(`محتوى الهمسة:\n\n${whisper.text}`, { show_alert: true });
 });
 
-// --- الأوامر العامة والألعاب ---
 bot.hears(/^يوت\s+(.+)$/, (ctx) => {
     const songName = ctx.match[1];
     const botUsername = ctx.botInfo.username;
@@ -218,5 +181,5 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Bot is running successfully with Persistent File Whispers!');
+    console.log('Bot is running successfully!');
 });
