@@ -90,7 +90,7 @@ bot.hears(/^(?:\/)?تفاعل$/, (ctx) => {
     );
 });
 
-// رفع الرتب بالرد (حسب طلبك)
+// رفع الرتب بالرد
 bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|ديف2|ديف تو|ديف|مطور اساسي)$/, async (ctx) => {
     const chatId = ctx.chat.id;
     const senderRole = getUserRole(ctx);
@@ -98,11 +98,9 @@ bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|د
     let inputRank = ctx.match[1];
     
     let targetRank = inputRank;
-    // "رفع ديف" أو "رفع ديف2" أو "رفع ديف تو" ترفع لـ Dev²🎖 (ديف تو)
     if (inputRank === 'ديف' || inputRank === 'ديف2' || inputRank === 'ديف تو') {
         targetRank = 'Dev²🎖';
     }
-    // "رفع مطور اساسي" ترفع لـ Dev🎖️ (ديف ون)
     if (inputRank === 'مطور اساسي') {
         targetRank = 'Dev🎖️';
     }
@@ -207,18 +205,34 @@ bot.hears(/^رفع القيود$/, (ctx) => {
     ctx.reply('🔓 تم تنفيذ "رفع القيود" بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
+// تنزيل الكل (يعلمك برتبته الأصلية وينزله لعضو)
 bot.hears(/^تنزيل الكل$/, (ctx) => {
     const chatId = ctx.chat.id;
     const senderRole = getUserRole(ctx);
     if (getRoleLevel(senderRole) < getRoleLevel('اكسترا')) {
         return ctx.reply('• هذا الامر يخص ↤ ｢ اكسترا🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
     }
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على الشخص.', { reply_to_message_id: ctx.message.message_id });
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على الشخص المراد تنزيله.', { reply_to_message_id: ctx.message.message_id });
     
     const targetId = ctx.message.reply_to_message.from.id;
+    const targetUser = ctx.message.reply_to_message.from.first_name;
+
     if (!userRoles[chatId]) userRoles[chatId] = {};
+    
+    // جلب رتبته الحالية قبل التنزيل
+    const currentTargetRole = userRoles[chatId][targetId] || 'عضو';
+
+    if (currentTargetRole === 'عضو') {
+        return ctx.reply(`• المستخدم ↤︎ ｢ ${targetUser} ｣ هو بالفعل عضو ولا يحمل أي رتبة.`, { reply_to_message_id: ctx.message.message_id });
+    }
+
+    // تنزيله وإرجاعه عضو
     userRoles[chatId][targetId] = 'عضو';
-    ctx.reply('🔻 تمت إزالة رتبته وإرجاعه كـ [ عضو ] بنجاح.', { reply_to_message_id: ctx.message.message_id });
+
+    ctx.reply(
+        `• المستخدم ↤︎ ｢ ${targetUser} ｣\n• تم تنزيله من الرتبة ( ${currentTargetRole} )`,
+        { reply_to_message_id: ctx.message.message_id }
+    );
 });
 
 bot.hears(/^(?:\/)?المالك$/, (ctx) => {
@@ -239,4 +253,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running with correct ranks mapping...');
+console.log('Bot is running with custom demote message...');
