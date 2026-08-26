@@ -1,5 +1,7 @@
 const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 // سيرفر وهمي عشان ريلواي يثبت البوت وما يصير أحمر
 const PORT = process.env.PORT || 3000;
@@ -14,15 +16,32 @@ const adminIds = [];
 const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
-const whisperStore = {}; 
+
+// ملفات حفظ الهمسات والجلسات عشان ما تضيع أبداً
+const SESSIONS_FILE = path.join(__dirname, 'whisper_sessions.json');
+const STORE_FILE = path.join(__dirname, 'whisper_store.json');
+
+function loadJson(file) {
+    try {
+        if (fs.existsSync(file)) {
+            return JSON.parse(fs.readFileSync(file, 'utf8'));
+        }
+    } catch (e) {}
+    return {};
+}
+
+function saveJson(file, data) {
+    try {
+        fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    } catch (e) {}
+}
+
+let whisperSessions = loadJson(SESSIONS_FILE);
+let whisperStore = loadJson(STORE_FILE);
 
 let gamesEnabled = true;
 
 const ranksHierarchy = ['عضو', 'مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'Dev²🎖', 'Dev🎖️'];
-
-function getRoleLevel(role) {
-    return ranksHierarchy.indexOf(role) !== -1 ? ranksHierarchy.indexOf(role) : 0;
-}
 
 function getUserRole(ctx) {
     if (!ctx.from || !ctx.chat) return 'عضو';
@@ -49,12 +68,13 @@ bot.start((ctx) => {
         const targetName = decodeURIComponent(parts[2]);
         const chatId = parts[3];
 
-        whisperStore[ctx.from.id] = {
+        whisperSessions[ctx.from.id] = {
             targetId: targetId,
             targetName: targetName,
             chatId: chatId,
             senderName: ctx.from.first_name || 'صديق'
         };
+        saveJson(SESSIONS_FILE, whisperSessions);
 
         return ctx.reply(`✍️ أهلاً بك يا ${ctx.from.first_name}!\n\n• أرسل الآن نص الهمسة الموجهة إلى [ ${targetName} ] في رسالة هنا، وسيتم نشرها في الجروب سراً.`);
     }
@@ -69,13 +89,15 @@ bot.start((ctx) => {
     );
 });
 
-// استقبال رسائل الهمسة في الخاص وإرسالها للجروب
+// استقبال رسائل الهمسة في الخاص وإرسالها للجروب فوراً
 bot.on('message', async (ctx, next) => {
     try {
-        if (ctx.chat.type === 'private' && whisperStore[ctx.from.id] && ctx.message.text) {
-            const data = whisperStore[ctx.from.id];
+        if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id] && ctx.message.text) {
+            const data = whisperSessions[ctx.from.id];
             const whisperText = ctx.message.text;
-            delete whisperStore[ctx.from.id];
+            
+            delete whisperSessions[ctx.from.id];
+            saveJson(SESSIONS_FILE, whisperSessions);
 
             const viewId = `vw_${Date.now()}_${Math.random()}`;
             whisperStore[viewId] = {
@@ -83,8 +105,9 @@ bot.on('message', async (ctx, next) => {
                 targetId: data.targetId,
                 senderName: data.senderName
             };
+            saveJson(STORE_FILE, whisperStore);
 
-            // إرسال رسالة الهمسة للجروب بشكل سري مع زر الرد المباشر لخاص البوت
+            // إرسال رسالة الهمسة للجروب بشكل سري وموجه
             await bot.telegram.sendMessage(
                 data.chatId,
                 `• يا حلو ⟵ ${data.targetName}\n• وصلتك همسة سرية جديدة من ⟵ ${data.senderName}\n• انت وحدك تقدر تشوفها`,
@@ -130,7 +153,6 @@ bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     const botUsername = ctx.botInfo.username;
     const chatId = ctx.chat.id;
 
-    // رابط يوجه العضو لخاص البوت مباشرة لکتابة الهمسة
     const whisperLink = `https://t.me/${botUsername}?start=wh_${targetId}_${encodeURIComponent(targetUser)}_${chatId}`;
 
     ctx.reply(
@@ -196,5 +218,5 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Bot is running successfully with Private Whisper feature!');
+    console.log('Bot is running successfully with Persistent File Whispers!');
 });
