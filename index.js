@@ -7,8 +7,8 @@ const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
 const globalMutedUsers = {}; 
+const whisperStore = {}; // لتخزين الهمسات المؤقتة
 
-// حالة الألعاب (مفتوحة افتراضياً)
 let gamesEnabled = true;
 
 const ranksHierarchy = ['عضو', 'مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'Dev²🎖', 'Dev🎖️'];
@@ -65,7 +65,65 @@ bot.on('message', (ctx, next) => {
     return next();
 });
 
-// أوامر تعطيل وتفعيل الألعاب (خاصة بالديف فقط)
+// --- نظام الأغاني (يوت) ---
+bot.hears(/^يوت\s+(.+)$/, (ctx) => {
+    const songName = ctx.match[1];
+    const botUsername = ctx.botInfo.username;
+    ctx.reply(
+        `🎵 جاري البحث عن الأغنية: [ ${songName} ]\n• اضغط الزر بالأسفل للاستماع والتحكم بالموسيقى.`,
+        Markup.inlineKeyboard([
+            [Markup.button.url(`▶️ استماع لـ (${songName})`, `https://t.me/${botUsername}`)],
+            [Markup.button.url('🌐 البحث في يوتيوب', `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`)]
+        ])
+    );
+});
+
+// --- نظام الهمسات ---
+bot.hears(/^اهمس$/, (ctx) => {
+    if (!ctx.message.reply_to_message) {
+        return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
+    }
+
+    const targetUser = ctx.message.reply_to_message.from.first_name;
+    const targetId = ctx.message.reply_to_message.from.id;
+    const senderId = ctx.from.id;
+    const senderName = ctx.from.first_name;
+
+    const whisperId = `whisper_${senderId}_${targetId}_${Date.now()}`;
+    whisperStore[whisperId] = { senderId, targetId, senderName, targetUser };
+
+    ctx.reply(
+        `• تم تحديد الهمسه لـ ↤ ${targetUser}\n• اضغط الزر لكتابة الهمسة`,
+        {
+            reply_to_message_id: ctx.message.message_id,
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback('اهمس هنا ↗', `do_whisper_${whisperId}`)]
+            ])
+        }
+    );
+});
+
+// التعامل مع ضغطة زر الهمسة
+bot.action(/^do_whisper_(.+)$/, (ctx) => {
+    const whisperId = ctx.match[1];
+    const data = whisperStore[whisperId];
+
+    if (!data) {
+        return ctx.answerCbQuery('⚠️ انتهت صلاحية هذه الهمسة أو تم استخدامها.', { show_alert: true });
+    }
+
+    if (ctx.from.id !== data.senderId) {
+        return ctx.answerCbQuery('❌ عذراً، هذه الهمسة ليست لك!', { show_alert: true });
+    }
+
+    ctx.answerCbQuery();
+    ctx.reply(`✍️ أهلاً بك يا ${data.senderName}، أرسل الآن محتوى الهمسة في رسالة هنا وسيتم إرسالها سراً إلى ${data.targetUser}:`);
+});
+
+// استقبال محتوى الهمسة (مثال توضيحي أو حفظ مؤقت للرد القادم)
+// (ملاحظة: يمكنك توسيعها حسب رغبتك لاستقبال النص وإرساله للشخص)
+
+// --- نظام الألعاب والفعاليات ---
 bot.hears(/^تعطيل الالعاب$/, (ctx) => {
     const senderRole = getUserRole(ctx);
     if (senderRole !== 'Dev🎖️') {
@@ -84,7 +142,6 @@ bot.hears(/^تفعيل الالعاب$/, (ctx) => {
     ctx.reply('🔓 تم تفعيل الألعاب والفعاليات بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
-// قائمة ألعاب البوت
 bot.hears(/^(?:\/)?الالعاب$/, (ctx) => {
     if (!gamesEnabled) {
         return ctx.reply('⚠️ عذراً، الألعاب معطلة حالياً من قبل المطور.', { reply_to_message_id: ctx.message.message_id });
@@ -96,7 +153,6 @@ bot.hears(/^(?:\/)?الالعاب$/, (ctx) => {
     ctx.reply(menu, { reply_to_message_id: ctx.message.message_id });
 });
 
-// تفاعل ألعاب الفعاليات (جمل، حروف، وغيرها من القائمة)
 const gameCommands = [
     'ترتيب', 'سمايلات', 'اسئله', 'احكام', 'فنانين', 'حيوانات', 'زوم', 'المختلف', 
     'اكمل', 'العكس', 'حزوره', 'كرسي', 'حظي', 'عربي', 'اسالني', 'الروليت', 
@@ -105,7 +161,7 @@ const gameCommands = [
     'ناقص', 'مصطلح', 'اختبار', 'مفرد', 'حروف'
 ];
 
-bot.hears(new RegExp(`^(?:\\/)?(${gameCommands.join('|R')})$`), (ctx) => {
+bot.hears(new RegExp(`^(?:\\/)?(${gameCommands.join('|')})$`), (ctx) => {
     if (!gamesEnabled) {
         return ctx.reply('⚠️ الألعاب معطلة حالياً.', { reply_to_message_id: ctx.message.message_id });
     }
@@ -307,4 +363,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running with full games and control system...');
+console.log('Bot is running with Songs & Whispers features...');
