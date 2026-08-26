@@ -38,6 +38,9 @@ async function checkOwnerOrAbove(ctx) {
     return false;
 }
 
+// رسالة الرفض بالشكل المطلوب
+const deniedMsg = '• هذا الامر يخص ↤ ｢ Dev 🎖 ｣';
+
 // 1. أمر البدء (Start)
 bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
@@ -54,131 +57,123 @@ bot.start((ctx) => {
 
 // 2. قائمة المساعدة
 bot.command('help', (ctx) => {
-    ctx.reply(`
-قائمة الأوامر المتاحة:
-1. تقفيل الألعاب / تفعيل الألعاب (خاص بالديف/الأدمن)
-2. [ 1 ] لحذف الملصقات (بالرد)
-3. [ مم ] فك كتم عام بدون رد
-4. [ خخ ] فك كتم عام بدون رد
-5. [ تقييد ] لحظر/تقييد العضو (بالرد)
-6. [ رفع القيود ] بالرد أو المنشن (خاص بالديف/المطور)
-7. [ الغاء التقييد ] بالرد أو المنشن (خاص بالمالك الأساسي)
-8. كتم / فك_كتم / همسه / بحث_اغاني / زواج
-    `);
+    ctx.reply('قائمة الأوامر المتاحة:\n1. تفعيل / تقفيل الألعاب\n2. [ 1 ] حذف الملصق بالرد\n3. [ مم / خخ ] فك الكتم\n4. كتم / تقييد / همسه / بحث_اغاني', {
+        reply_to_message_id: ctx.message.message_id
+    });
 });
 
-// 3. نظام تنظيف الملصقات عبر الرقم (1)
+// 3. نظام تنظيف الملصقات عبر الرقم (1) - بالرد على الملصق
 bot.hears('1', async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
-    if (!authorized) return ctx.reply('[هذا الأمر يخص Dev🎖️]');
+    if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     
     if (ctx.message.reply_to_message && ctx.message.reply_to_message.sticker) {
         try {
-            await ctx.deleteMessage(ctx.message.reply_to_message.message_id);
-            await ctx.deleteMessage();
-            return ctx.reply('🗑️ تم حذف الملصق بنجاح.');
+            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.reply_to_message.message_id);
+            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
         } catch (e) {
-            return ctx.reply('❌ تأكد من صلاحيات البوت لحذف الرسائل.');
+            return ctx.reply('❌ تأكد من صلاحيات البوت لحذف الرسائل.', { reply_to_message_id: ctx.message.message_id });
         }
+    } else {
+        ctx.reply('⚠️ يرجى الرد على الملصق المراد حذفه وإرسال 1.', { reply_to_message_id: ctx.message.message_id });
     }
-    ctx.reply('⚠️ يرجى الرد على الملصق المراد حذفه.');
 });
 
-// 4. فك الكتم (مم / خخ) - بدون رد أو منشن (تنفذ فوراً بالشات)
+// 4. فك الكتم (مم / خخ) بدون رد
 bot.hears('مم', async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
-    if (!authorized) return ctx.reply('[هذا الأمر يخص Dev🎖️]');
-    ctx.reply('🔊 تم تنفيذ فك الكتم (مم) بنجاح.');
+    if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
+    ctx.reply('🔊 تم تنفيذ فك الكتم (مم) بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
 bot.hears('خخ', async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
-    if (!authorized) return ctx.reply('[هذا الأمر يخص Dev🎖️]');
-    ctx.reply('🌐 تم تنفيذ فك الكتم العام (خخ) بنجاح.');
+    if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
+    ctx.reply('🌐 تم تنفيذ فك الكتم العام (خخ) بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
-// 5. أمر "تقييد" (بديل الحظر - بالرد على العضو)
+// 5. أمر "تقييد" (بالرد على العضو)
 bot.hears(/^(?:\/)?تقييد$/, async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
-    if (!authorized) return ctx.reply('[هذا الأمر يخص Dev🎖️]');
+    if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو المراد تقييده/حظره.');
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو المراد تقييده.', { reply_to_message_id: ctx.message.message_id });
     try {
         await ctx.telegram.banChatMember(ctx.chat.id, ctx.message.reply_to_message.from.id);
-        ctx.reply('🔨 تم تقييد/حظر العضو بنجاح.');
-    } catch (e) { ctx.reply('❌ حدث خطأ، تأكد من صلاحيات البوت.'); }
+        ctx.reply('🔨 تم تقييد/حظر العضو بنجاح.', { reply_to_message_id: ctx.message.message_id });
+    } catch (e) { ctx.reply('❌ حدث خطأ، تأكد من صلاحيات المشرف للبوت.', { reply_to_message_id: ctx.message.message_id }); }
 });
 
-// 6. رفع القيود (مخصص لـ ديف أو المطور - بالرد أو المنشن)
+// 6. رفع القيود (للـ ديف أو المطور)
 bot.hears(/^رفع القيود(?:\s+@?\w+)?$/, async (ctx) => {
     const userId = ctx.from.username;
     const isDev = developers.includes(userId);
     const authorized = await checkAdminOrDev(ctx);
 
     if (!isDev && !authorized) {
-        return ctx.reply('[هذا الأمر يخص Dev🎖️]');
+        return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     }
-    ctx.reply('🔓 تم رفع القيود بنجاح (بواسطة صلاحيات الديف/المطور).');
+    ctx.reply('🔓 تم رفع القيود بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
-// 7. الغاء التقييد (مخصص حصرياً للمالك الأساسي أو فوقه - بالرد أو المنشن)
+// 7. الغاء التقييد (للمالك الأساسي فقط)
 bot.hears(/^الغاء التقييد(?:\s+@?\w+)?$/, async (ctx) => {
     const isOwner = await checkOwnerOrAbove(ctx);
     if (!isOwner) {
-        return ctx.reply('[هذا الأمر يخص Dev🎖️]');
+        return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     }
-    ctx.reply('👑 تم تنفيذ "الغاء التقييد" بنجاح (صلاحية المالك الأساسي).');
+    ctx.reply('👑 تم تنفيذ "الغاء التقييد" بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
 // 8. تفعيل / تقفيل الألعاب
 bot.hears('تفعيل الألعاب', async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
-    if (!authorized) return ctx.reply('[هذا الأمر يخص Dev🎖️]');
+    if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     gamesEnabled = true;
-    ctx.reply('🎮 تم تفعيل الألعاب بنجاح!');
+    ctx.reply('🎮 تم تفعيل الألعاب بنجاح!', { reply_to_message_id: ctx.message.message_id });
 });
 
 bot.hears('تقفيل الألعاب', async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
-    if (!authorized) return ctx.reply('[هذا الأمر يخص Dev🎖️]');
+    if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     gamesEnabled = false;
-    ctx.reply('🛑 تم تقفيل الألعاب.');
+    ctx.reply('🛑 تم تقفيل الألعاب.', { reply_to_message_id: ctx.message.message_id });
 });
 
 // 9. أوامر الإشراف الأساسية (كتم، فك كتم)
 bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.');
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.', { reply_to_message_id: ctx.message.message_id });
     try {
         await ctx.telegram.restrictChatMember(ctx.chat.id, ctx.message.reply_to_message.from.id, { 
             permissions: { can_send_messages: false } 
         });
-        ctx.reply('🔇 تم كتم العضو بنجاح.');
-    } catch (e) { ctx.reply('❌ حدث خطأ.'); }
+        ctx.reply('🔇 تم كتم العضو بنجاح.', { reply_to_message_id: ctx.message.message_id });
+    } catch (e) { ctx.reply('❌ حدث خطأ تأكد من صلاحيات البوت.', { reply_to_message_id: ctx.message.message_id }); }
 });
 
 bot.hears(/^(?:\/)?فك_كتم$/, async (ctx) => {
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.');
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.', { reply_to_message_id: ctx.message.message_id });
     try {
         await ctx.telegram.restrictChatMember(ctx.chat.id, ctx.message.reply_to_message.from.id, { 
             permissions: { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true } 
         });
-        ctx.reply('🔊 تم فك الكتم بنجاح.');
-    } catch (e) { ctx.reply('❌ حدث خطأ.'); }
+        ctx.reply('🔊 تم فك الكتم بنجاح.', { reply_to_message_id: ctx.message.message_id });
+    } catch (e) { ctx.reply('❌ حدث خطأ.', { reply_to_message_id: ctx.message.message_id }); }
 });
 
 // 10. نظام الرتب
 const ranks = ['مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'ديف', 'مطور اساسي'];
 ranks.forEach(rank => {
     bot.hears(new RegExp(`^(?:\\/)?${rank}$`), (ctx) => {
-        if (!ctx.message.reply_to_message) return ctx.reply(`⚠️ الرد على العضو مطلوب لتعيين رتبة: ${rank}`);
+        if (!ctx.message.reply_to_message) return ctx.reply(`⚠️ الرد على العضو مطلوب لتعيين رتبة: ${rank}`, { reply_to_message_id: ctx.message.message_id });
         const targetUser = ctx.message.reply_to_message.from.first_name;
-        ctx.reply(`✨ تم تعيين رتبة [ ${rank} ] للعضو ${targetUser} بنجاح!`);
+        ctx.reply(`✨ تم تعيين رتبة [ ${rank} ] للعضو ${targetUser} بنجاح!`, { reply_to_message_id: ctx.message.message_id });
     });
 });
 
 // 11. الهمسات وبحث الأغاني والزواج
 bot.hears(/^(?:\/)?همسه(?:\s+(.+))?$/, async (ctx) => {
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة الشخص.');
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة الشخص.', { reply_to_message_id: ctx.message.message_id });
     const sender = ctx.from.first_name;
     const recipient = ctx.message.reply_to_message.from.first_name;
     const text = ctx.match[1] || 'رسالة سرية';
@@ -186,28 +181,28 @@ bot.hears(/^(?:\/)?همسه(?:\s+(.+))?$/, async (ctx) => {
         await ctx.deleteMessage();
         ctx.reply(`🔒 همسة سرية من **${sender}** إلى **${recipient}**:\n${text}`);
     } catch (e) {
-        ctx.reply(`🔒 همسة من ${sender} إلى ${recipient}:\n${text}`);
+        ctx.reply(`🔒 همسة من ${sender} إلى ${recipient}:\n${text}`, { reply_to_message_id: ctx.message.message_id });
     }
 });
 
 bot.hears(/^(?:\/)?بحث_اغاني(?:\s+(.+))?$/, (ctx) => {
     const query = ctx.match[1] || 'عامة';
-    ctx.reply(`🎵 جاري البحث عن: ${query} ...`);
+    ctx.reply(`🎵 جاري البحث عن: ${query} ...`, { reply_to_message_id: ctx.message.message_id });
 });
 
 bot.on('text', (ctx) => {
     const text = ctx.message.text;
 
-    if (text.includes('ايلاف')) return ctx.reply('إيلاف هنا: @j4xa7');
-    if (text.includes('توري')) return ctx.reply('توري هنا: @to6ri');
-    if (text === 'المالك') return ctx.reply('👑 بروفايل المالك الأساسي:\nحسابي: @j4xa7\nالمطورة: @to6ri');
+    if (text.includes('ايلاف')) return ctx.reply('إيلاف هنا: @j4xa7', { reply_to_message_id: ctx.message.message_id });
+    if (text.includes('توري')) return ctx.reply('توري هنا: @to6ri', { reply_to_message_id: ctx.message.message_id });
+    if (text === 'المالك') return ctx.reply('👑 بروفايل المالك الأساسي:\nحسابي: @j4xa7\nالمطورة: @to6ri', { reply_to_message_id: ctx.message.message_id });
 
     if (text.startsWith('زواج') && ctx.message.reply_to_message) {
-        if (!gamesEnabled) return ctx.reply('🛑 عذراً، الألعاب مقفلة حالياً.');
+        if (!gamesEnabled) return ctx.reply('🛑 عذراً، الألعاب مقفلة حالياً.', { reply_to_message_id: ctx.message.message_id });
         const groom = ctx.from.first_name;
         const bride = ctx.message.reply_to_message.from.first_name;
         const details = text.replace('زواج', '').trim();
-        return ctx.reply(`💍 ألف ألف مبروك الزواج!\nالعريس: ${groom}\nالعروسة: ${bride}\nالتفاصيل والمهر: ${details}`);
+        return ctx.reply(`💍 ألف ألف مبروك الزواج!\nالعريس: ${groom}\nالعروسة: ${bride}\nالتفاصيل والمهر: ${details}`, { reply_to_message_id: ctx.message.message_id });
     }
 });
 
