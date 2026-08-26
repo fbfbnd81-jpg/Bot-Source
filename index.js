@@ -5,10 +5,10 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 // مبرمجي البوت
 const developers = ['j4xa7', 'to6ri'];
 
-// أمر البدء (Start) مع الأزرار الشفافة واسم المستخدم الحقيقي
+// 1. أمر البدء (Start) مع الأزرار الشفافة واسمك الحقيقي
 bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
-    const userName = ctx.from.first_name; // يجيب اسمك أو اسم الشخص اللي ضغط ستارت تلقائياً
+    const userName = ctx.from.first_name; // يجيب اسم الشخص تلقائياً
     
     ctx.reply(
         `اهلا بك يا قلبي 🫶 ــ ${userName}\n\n• انا اشغل لك اللي تبي بالمكالمة\n\nادعم هالمنصات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.`,
@@ -19,7 +19,7 @@ bot.start((ctx) => {
     );
 });
 
-// قائمة الأوامر (مساعدة)
+// 2. قائمة الأوامر (مساعدة)
 bot.command('help', (ctx) => {
     ctx.reply(`
 قائمة الأوامر المتاحة (بالرد على الرسالة):
@@ -33,7 +33,7 @@ bot.command('help', (ctx) => {
     `);
 });
 
-// أمر الكتم
+// 3. أمر الكتم (بالرد على الرسالة)
 bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو المراد كتمه.');
     try {
@@ -44,7 +44,7 @@ bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
     } catch (e) { ctx.reply('❌ حدث خطأ، تأكد من صلاحيات البوت.'); }
 });
 
-// أمر فك الكتم
+// 4. أمر فك الكتم (بالرد على الرسالة)
 bot.hears(/^(?:\/)?فك_كتم$/, async (ctx) => {
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.');
     try {
@@ -55,7 +55,7 @@ bot.hears(/^(?:\/)?فك_كتم$/, async (ctx) => {
     } catch (e) { ctx.reply('❌ حدث خطأ.'); }
 });
 
-// أمر الحظر
+// 5. أمر الحظر (بالرد على الرسالة)
 bot.hears(/^(?:\/)?حظر$/, async (ctx) => {
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.');
     try {
@@ -64,7 +64,7 @@ bot.hears(/^(?:\/)?حظر$/, async (ctx) => {
     } catch (e) { ctx.reply('❌ حدث خطأ.'); }
 });
 
-// نظام الرتب
+// 6. نظام الرتب (بالرد على الشخص)
 const ranks = ['مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'ديف', 'مطور اساسي'];
 ranks.forEach(rank => {
     bot.hears(new RegExp(`^(?:\\/)?${rank}$`), (ctx) => {
@@ -74,7 +74,7 @@ ranks.forEach(rank => {
     });
 });
 
-// نظام الهمسة
+// 7. نظام الهمسة
 bot.hears(/^(?:\/)?همسه(?:\s+(.+))?$/, async (ctx) => {
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة الشخص المراد إرسال الهمسة له.');
     const sender = ctx.from.first_name;
@@ -88,13 +88,13 @@ bot.hears(/^(?:\/)?همسه(?:\s+(.+))?$/, async (ctx) => {
     }
 });
 
-// بحث أغاني
+// 8. بحث أغاني
 bot.hears(/^(?:\/)?بحث_اغاني(?:\s+(.+))?$/, (ctx) => {
     const query = ctx.match[1] || 'عامة';
     ctx.reply(`🎵 جاري البحث عن: ${query} ...`);
 });
 
-// التفاعلات والمنشن والزواج
+// 9. التفاعلات والمنشن والزواج العادي
 bot.on('text', (ctx) => {
     const text = ctx.message.text;
 
