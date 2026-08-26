@@ -2,10 +2,14 @@ const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
 
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running successfully!');
-}).listen(PORT);
+    res.end('Bot is active and running 24/7!');
+});
+
+server.listen(PORT, () => {
+    console.log(`HTTP Server is listening on port ${PORT}`);
+});
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -182,6 +186,12 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
+// منع انهيار البوت في حال حدوث أي خطأ غير متوقع
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
 bot.launch().then(() => {
-    console.log('Bot is running successfully!');
-});
+    console.log('Bot is running and stable 24/7!');
+}).catchall = (err) => {
+    console.log('Bot launch error:', err);
+};
