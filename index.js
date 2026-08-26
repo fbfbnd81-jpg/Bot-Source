@@ -5,7 +5,7 @@ const yts = require('yt-search');
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Complete Bot is running successfully!');
+    res.end('Bot is running successfully!');
 }).listen(PORT);
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
@@ -16,14 +16,13 @@ const groupSettings = {};
 const floodControl = {};
 let gamesEnabled = true;
 
-// دالة تحديد الرتب (مع منشن وتوريف وايفي)
+// تحديد الرتب (مع منشن توريف وإيفي)
 function getUserRole(ctx) {
     if (!ctx.from || !ctx.chat) return 'عضو';
     const userId = ctx.from.id;
     const username = ctx.from.username ? ctx.from.username.toLowerCase() : '';
     const chatId = ctx.chat.id;
     
-    // المطورين الأساسيين (توريف وايفي)
     const devUsernames = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'toraif'];
     
     if (devUsernames.includes(username) || adminIds.includes(userId.toString())) {
@@ -45,7 +44,7 @@ bot.start((ctx) => {
     );
 });
 
-// --- 1. نظام تشغيل الأغاني ---
+// نظام الأغاني
 bot.hears(/^يوت\s+(.+)$/, async (ctx) => {
     const query = ctx.match[1];
     try {
@@ -74,7 +73,7 @@ bot.hears(/^يوت\s+(.+)$/, async (ctx) => {
     }
 });
 
-// --- 2. أوامر قفل وفتح الصور والملصقات ---
+// أوامر القفل والفتح
 bot.hears(/^قفل الصور$/, (ctx) => {
     if (ctx.chat.type === 'private') return;
     const chatId = ctx.chat.id;
@@ -107,7 +106,7 @@ bot.hears(/^فتح الملصقات$/, (ctx) => {
     return ctx.reply('🔓 تم فتح الملصقات.');
 });
 
-// --- 3. التحكم بالألعاب والرتب ---
+// الألعاب والرتب
 bot.hears(/^تعطيل الالعاب$/, (ctx) => {
     if (getUserRole(ctx) !== 'Dev🎖️') return ctx.reply('• هذا الامر يخص ↤ ｢ Dev🎖️ ｣');
     gamesEnabled = false;
@@ -130,7 +129,7 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
     ctx.reply(`• رتبتك هي ↤ ｢ ${role} ｣\n• آي دي حسابك ↤ ${ctx.from.id}`);
 });
 
-// --- 4. حماية دخول البوتات الغريبة ---
+// حماية البوتات
 bot.on('new_chat_members', async (ctx) => {
     try {
         const newMembers = ctx.message.new_chat_members;
@@ -146,7 +145,7 @@ bot.on('new_chat_members', async (ctx) => {
     } catch (e) {}
 });
 
-// --- 5. نظام المراقبة والحماية الشامل (الصور، الملصقات، الفويس، والسبام) ---
+// المراقبة والحماية الشاملة
 bot.on('message', async (ctx, next) => {
     try {
         if (!ctx.chat || ctx.chat.type === 'private' || !ctx.from || ctx.from.is_bot) {
@@ -160,19 +159,16 @@ bot.on('message', async (ctx, next) => {
         if (!groupSettings[chatId]) groupSettings[chatId] = {};
         const settings = groupSettings[chatId];
 
-        // حذف الصور لو مقفولة
         if (settings.lockPhotos && ctx.message.photo) {
             try { await ctx.deleteMessage(); } catch (e) {}
             return ctx.reply(`⚠️ تم حذف الصورة: الصور مقفولة في المجموعة.`);
         }
 
-        // حذف الملصقات لو مقفولة
         if (settings.lockStickers && ctx.message.sticker) {
             try { await ctx.deleteMessage(); } catch (e) {}
             return ctx.reply(`⚠️ تم حذف الملصق: الملصقات ممنوعة في المجموعة.`);
         }
 
-        // حماية الفويس والصور المتكررة (أكثر من 11 بدقيقتين)
         const now = Date.now();
         const TWO_MINUTES = 2 * 60 * 1000;
         let mediaType = null;
@@ -217,5 +213,5 @@ bot.on('message', async (ctx, next) => {
 });
 
 bot.launch().then(() => {
-    console.log('Final Complete Bot is running successfully!');
+    console.log('Bot is running successfully!');
 });
