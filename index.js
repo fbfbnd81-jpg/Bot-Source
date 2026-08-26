@@ -42,7 +42,7 @@ bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
     const payload = ctx.startPayload;
 
-    // إذا دخل من رابط الهمسة في الخاص
+    // إذا دخل المستخدم من رابط الهمسة في الخاص
     if (payload && payload.startsWith('wh_')) {
         const parts = payload.split('_');
         const targetId = parts[1];
@@ -72,7 +72,6 @@ bot.start((ctx) => {
 // استقبال رسائل الهمسة في الخاص وإرسالها للجروب
 bot.on('message', async (ctx, next) => {
     try {
-        // إذا كانت الرسالة في الخاصة وكان المستخدم يكتب همسة
         if (ctx.chat.type === 'private' && whisperStore[ctx.from.id] && ctx.message.text) {
             const data = whisperStore[ctx.from.id];
             const whisperText = ctx.message.text;
@@ -85,7 +84,7 @@ bot.on('message', async (ctx, next) => {
                 senderName: data.senderName
             };
 
-            // إرسال رسالة الهمسة للجروب بشكل سري
+            // إرسال رسالة الهمسة للجروب بشكل سري مع زر الرد المباشر لخاص البوت
             await bot.telegram.sendMessage(
                 data.chatId,
                 `• يا حلو ⟵ ${data.targetName}\n• وصلتك همسة سرية جديدة من ⟵ ${data.senderName}\n• انت وحدك تقدر تشوفها`,
@@ -120,7 +119,7 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
-// --- نظام الهمسات (عند كتابة اهمس بالجروب) ---
+// --- نظام الهمسات (عند كتابة اهمس أو همسه بالجروب) ---
 bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
@@ -131,6 +130,7 @@ bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     const botUsername = ctx.botInfo.username;
     const chatId = ctx.chat.id;
 
+    // رابط يوجه العضو لخاص البوت مباشرة لکتابة الهمسة
     const whisperLink = `https://t.me/${botUsername}?start=wh_${targetId}_${encodeURIComponent(targetUser)}_${chatId}`;
 
     ctx.reply(
@@ -160,7 +160,7 @@ bot.action(/^read_wh_(.+)$/, (ctx) => {
     return ctx.answerCbQuery(`محتوى الهمسة:\n\n${whisper.text}`, { show_alert: true });
 });
 
-// --- بقية الأوامر والألعاب ---
+// --- الأوامر العامة والألعاب ---
 bot.hears(/^يوت\s+(.+)$/, (ctx) => {
     const songName = ctx.match[1];
     const botUsername = ctx.botInfo.username;
