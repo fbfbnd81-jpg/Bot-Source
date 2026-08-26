@@ -1,7 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
 
-// سيرفر وهمي عشان ريلواي يثبت البوت وما يصير أحمر
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -15,7 +14,6 @@ const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
 
-// تخزين مؤقت لجلسات الهمسات والرسائل
 const whisperSessions = {};
 const whisperStore = {};
 
@@ -35,8 +33,8 @@ function getUserRole(ctx) {
     return userRoles[chatId][userId] || 'عضو';
 }
 
-// 1. استقبال الـ start بالخاص لما يضغط زر "اهمس هنا"
-bot.start((ctx) => {
+// 1. عند الضغط على الرابط ودخول الخاص، يطلب إرسال Start بالإنجليزية بدون كلام كثير
+bot.start(async (ctx) => {
     const botUsername = ctx.botInfo.username;
     const payload = ctx.startPayload;
 
@@ -46,7 +44,6 @@ bot.start((ctx) => {
         const targetName = decodeURIComponent(parts[2]);
         const chatId = parts[3];
 
-        // حفظ بيانات الهمسة المؤقتة لهذا المستخدم في الخاص
         whisperSessions[ctx.from.id] = {
             targetId: targetId,
             targetName: targetName,
@@ -54,12 +51,15 @@ bot.start((ctx) => {
             senderName: ctx.from.first_name || 'صديق'
         };
 
-        return ctx.reply(`✍️ أهلاً بك يا ${ctx.from.first_name}!\n\n• أرسل الآن نص الهمسة الموجهة إلى [ ${targetName} ] في رسالة هنا، وسيتم نشرها في الجروب سراً.`);
+        // إرسال رسالة نظيفة يكتب فيها المستخدم start أو يبدأ بإرسال الهمسة
+        const sentMsg = await ctx.reply(`Start writing your whisper for [ ${targetName} ]:`);
+        whisperSessions[ctx.from.id].promptMsgId = sentMsg.message_id;
+        return;
     }
 
     const userName = ctx.from.first_name || 'صديقي';
     ctx.reply(
-        `اهلا بك يا قلبي 🫶 ــ ${userName}\n\n• انا اشغل لك اللي تبي بالمكالمة`,
+        `اهلا بك يا قلبي 🫶 ــ ${userName}`,
         Markup.inlineKeyboard([
             [Markup.button.url('➕ أضفني في مجموعتك', `https://t.me/${botUsername}?startgroup=true`)],
             [Markup.button.url('👤 المطور', 'https://t.me/j4xa7')]
@@ -67,14 +67,19 @@ bot.start((ctx) => {
     );
 });
 
-// 2. استقبال نص الهمسة بالخاص وإرسالها للقروب
+// 2. استقبال رسالة الهمسة في الخاص، حذف رسالة الطلب، وإرسالها للقروب
 bot.on('message', async (ctx, next) => {
     try {
         if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id] && ctx.message.text) {
             const data = whisperSessions[ctx.from.id];
             const whisperText = ctx.message.text;
             
-            // مسح الجلسة عشان ما تتلخبط الرسائل الجاية
+            // حذف رسالة البرومبت السابقة إذا وجدت لنظافة الشاشة
+            if (data.promptMsgId) {
+                try { await ctx.telegram.deleteMessage(ctx.chat.id, data.promptMsgId); } catch (e) {}
+            }
+            try { await ctx.deleteMessage(); } catch (e) {} // حذف رسالة الهمسة نفسها من الخاص للسرية
+
             delete whisperSessions[ctx.from.id];
 
             const viewId = `vw_${Date.now()}_${Math.random()}`;
@@ -84,7 +89,7 @@ bot.on('message', async (ctx, next) => {
                 senderName: data.senderName
             };
 
-            // إرسال رسالة الهمسة المطلوبة تماماً للقروب
+            // إرسال الهمسة للقروب بالشكل المطلوب
             await bot.telegram.sendMessage(
                 data.chatId,
                 `• يا حلو ⟵ ${data.targetName}\n• وصلتك همسة سرية جديدة من ⟵ ${data.senderName}\n• انت وحدك تقدر تشوفها`,
@@ -94,11 +99,10 @@ bot.on('message', async (ctx, next) => {
                 ])
             );
 
-            // الرد في الخاص للمستخدم زي ما طلبت
-            return ctx.reply('✅ تم إرسال همستك بنجاح إلى الجروب بشكل سري!');
+            // الرد في الخاص باختصار
+            return ctx.reply('✅ تم إرسال الهمسه');
         }
 
-        // احصائيات وكتم للقروبات
         if (ctx.chat && ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             const chatId = ctx.chat.id;
             const userId = ctx.from.id;
@@ -120,7 +124,7 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
-// 3. أمر (اهمس) أو (همسه) في القروب بالرد على الشخص
+// 3. أمر اهمس في القروب
 bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
@@ -131,11 +135,10 @@ bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     const botUsername = ctx.botInfo.username;
     const chatId = ctx.chat.id;
 
-    // رابط يودي الشخص لخاص البوت مع تمرير البيانات
     const whisperLink = `https://t.me/${botUsername}?start=wh_${targetId}_${encodeURIComponent(targetUser)}_${chatId}`;
 
     ctx.reply(
-        `• تم تحديد الهمسه لـ ⟵ ${targetUser}\n• اضغط الزر أدناه لكتابة الهمسة في الخاص:`,
+        `• تم تحديد الهمسه لـ ⟵ ${targetUser}`,
         {
             reply_to_message_id: ctx.message.message_id,
             ...Markup.inlineKeyboard([
@@ -145,7 +148,7 @@ bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
     );
 });
 
-// 4. عرض محتوى الهمسة عند الضغط على زر "رؤية الهمسة"
+// 4. رؤية الهمسة عبر النافذة المنبثقة
 bot.action(/^read_wh_(.+)$/, (ctx) => {
     const viewId = ctx.match[1];
     const whisper = whisperStore[viewId];
@@ -154,7 +157,6 @@ bot.action(/^read_wh_(.+)$/, (ctx) => {
         return ctx.answerCbQuery('⚠️ انتهت صلاحية الهمسة أو تم قراءتها.', { show_alert: true });
     }
 
-    // السماح فقط للشخص المستهدف برؤية الهمسة
     if (ctx.from.id.toString() !== whisper.targetId.toString()) {
         return ctx.answerCbQuery('❌ عذراً، هذه الهمسة ليست موجهة لك وحدك!', { show_alert: true });
     }
@@ -162,41 +164,17 @@ bot.action(/^read_wh_(.+)$/, (ctx) => {
     return ctx.answerCbQuery(`محتوى الهمسة:\n\n${whisper.text}`, { show_alert: true });
 });
 
-// --- الأوامر والألعاب الأخرى ---
 bot.hears(/^يوت\s+(.+)$/, (ctx) => {
     const songName = ctx.match[1];
     const botUsername = ctx.botInfo.username;
     ctx.reply(
-        `🎵 جارٍ تشغيل الأغنية: [ ${songName} ]\n• اضغط الزر بالأسفل للاستماع والتحكم بالموسيقى.`,
+        `🎵 جارٍ تشغيل الأغنية: [ ${songName} ]`,
         Markup.inlineKeyboard([
-            [Markup.button.url(`▶️ استماع لـ (${songName})`, `https://t.me/${botUsername}`)],
-            [Markup.button.url('🌐 البحث في يوتيوب', `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`)]
+            [Markup.button.url(`▶️ استماع`, `https://t.me/${botUsername}`)]
         ])
     );
 });
 
-bot.hears(/^تعطيل الالعاب$/, (ctx) => {
-    if (getUserRole(ctx) !== 'Dev🎖️') return ctx.reply('• هذا الامر يخص ↤ ｢ Dev🎖️ ｣');
-    gamesEnabled = false;
-    ctx.reply('🔒 تم تعطيل الألعاب والفعاليات بنجاح.');
-});
-
-bot.hears(/^تفعيل الالعاب$/, (ctx) => {
-    if (getUserRole(ctx) !== 'Dev🎖️') return ctx.reply('• هذا الامر يخص ↤ ｢ Dev🎖️ ｣');
-    gamesEnabled = true;
-    ctx.reply('🔓 تم تفعيل الألعاب والفعاليات بنجاح.');
-});
-
-bot.hears(/^(?:\/)?الالعاب$/, (ctx) => {
-    if (!gamesEnabled) return ctx.reply('⚠️ عذراً، الألعاب معطلة حالياً.');
-    ctx.reply('• قائمة العاب البوت:\n• ترتيب\n• سمايلات\n• اسئله\n• احكام\n• حزوره\n• روليت');
-});
-
-bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
-    const role = getUserRole(ctx);
-    ctx.reply(`• رتبتك هي ↤ ｢ ${role} ｣\n• آي دي حسابك ↤ ${ctx.from.id}`);
-});
-
 bot.launch().then(() => {
-    console.log('Bot is running successfully with exact requested Whisper flow!');
+    console.log('Bot is running successfully!');
 });
