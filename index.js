@@ -5,8 +5,22 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 // مبرمجي البوت (حط معرفات التليجرام الرقمية أو الـ Usernames هنا)
 const developers = ['j4xa7', 'to6ri']; // حطوا يوزراتكم بدون @
 
+bot.start((ctx) => 
+const { Telegraf, Markup } = require('telegraf');
+
+// أمر الستارت مع الأزرار الشفافة
 bot.start((ctx) => {
-    ctx.reply('مرحباً بك! تم تشغيل بوت الإشراف والفعاليات بنجاح.\n\nاكتب /help لعرض قائمة الأوامر المتاحة.');
+    const botUsername = ctx.botInfo.username; // يجيب يوزر بوتك تلقائياً
+    
+    ctx.reply(
+        'اهلا بك يا قلبي 🫶 ــ Evy\n\n• انا اشغل لك اللي تبي بالمكالمة\n\nادعم هالمنصات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.',
+        Markup.inlineKeyboard([
+            [Markup.button.url('➕ أضفني في مجموعتك', `https://t.me/${botUsername}?startgroup=true`)],
+            [Markup.button.url('👤 المطور', 'https://t.me/j4xa7')] // حط يوزر حسابك هنا
+        ])
+    );
+});
+
 });
 
 // قائمة الأوامر بالعربي
