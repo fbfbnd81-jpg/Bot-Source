@@ -7,7 +7,7 @@ const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
 const globalMutedUsers = {}; 
-const whisperStore = {}; // لتخزين الهمسات المؤقتة
+const whisperStore = {}; // لتخزين بيانات الهمسات المؤقتة
 
 let gamesEnabled = true;
 
@@ -70,7 +70,7 @@ bot.hears(/^يوت\s+(.+)$/, (ctx) => {
     const songName = ctx.match[1];
     const botUsername = ctx.botInfo.username;
     ctx.reply(
-        `🎵 جاري البحث عن الأغنية: [ ${songName} ]\n• اضغط الزر بالأسفل للاستماع والتحكم بالموسيقى.`,
+        `🎵 جارٍ تشغيل الأغنية: [ ${songName} ]\n• اضغط الزر بالأسفل للاستماع والتحكم بالموسيقى.`,
         Markup.inlineKeyboard([
             [Markup.button.url(`▶️ استماع لـ (${songName})`, `https://t.me/${botUsername}`)],
             [Markup.button.url('🌐 البحث في يوتيوب', `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`)]
@@ -78,7 +78,7 @@ bot.hears(/^يوت\s+(.+)$/, (ctx) => {
     );
 });
 
-// --- نظام الهمسات ---
+// --- نظام الهمسات المطابق للصور ---
 bot.hears(/^اهمس$/, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
@@ -90,38 +90,89 @@ bot.hears(/^اهمس$/, (ctx) => {
     const senderName = ctx.from.first_name;
 
     const whisperId = `whisper_${senderId}_${targetId}_${Date.now()}`;
-    whisperStore[whisperId] = { senderId, targetId, senderName, targetUser };
+    
+    // تخزين حالة الهمسة بانتظار كتابتها
+    whisperStore[senderId] = {
+        targetId,
+        targetUser,
+        senderName,
+        step: 'waiting_for_text'
+    };
 
     ctx.reply(
-        `• تم تحديد الهمسه لـ ↤ ${targetUser}\n• اضغط الزر لكتابة الهمسة`,
+        `• تم تحديد الهمسه لـ ⟵ ${targetUser}\n• اضغط الزر لكتابة الهمسة`,
         {
             reply_to_message_id: ctx.message.message_id,
             ...Markup.inlineKeyboard([
-                [Markup.button.callback('اهمس هنا ↗', `do_whisper_${whisperId}`)]
+                [Markup.button.callback('اهمس هنا ↗', `start_whisper_${senderId}`)]
             ])
         }
     );
 });
 
-// التعامل مع ضغطة زر الهمسة
-bot.action(/^do_whisper_(.+)$/, (ctx) => {
-    const whisperId = ctx.match[1];
-    const data = whisperStore[whisperId];
-
-    if (!data) {
-        return ctx.answerCbQuery('⚠️ انتهت صلاحية هذه الهمسة أو تم استخدامها.', { show_alert: true });
-    }
-
-    if (ctx.from.id !== data.senderId) {
+bot.action(/^start_whisper_(\d+)$/, (ctx) => {
+    const ownerId = parseInt(ctx.match[1]);
+    if (ctx.from.id !== ownerId) {
         return ctx.answerCbQuery('❌ عذراً، هذه الهمسة ليست لك!', { show_alert: true });
     }
-
     ctx.answerCbQuery();
-    ctx.reply(`✍️ أهلاً بك يا ${data.senderName}، أرسل الآن محتوى الهمسة في رسالة هنا وسيتم إرسالها سراً إلى ${data.targetUser}:`);
+    ctx.reply(`✍️ أهلاً بك، أرسل الآن نص الهمسة في رسالة هنا وسيتم إرسالها سراً للشخص المستهدف.`);
 });
 
-// استقبال محتوى الهمسة (مثال توضيحي أو حفظ مؤقت للرد القادم)
-// (ملاحظة: يمكنك توسيعها حسب رغبتك لاستقبال النص وإرساله للشخص)
+// استقبال نص الهمسة وإرسالها
+bot.on('text', (ctx, next) => {
+    const userId = ctx.from.id;
+    if (whisperStore[userId] && whisperStore[userId].step === 'waiting_for_text') {
+        const whisperData = whisperStore[userId];
+        const whisperText = ctx.message.text;
+        
+        // مسح الحالة المؤقتة
+        delete whisperStore[userId];
+
+        // توليد معرف فريد لعرض الهمسة
+        const viewId = `view_${Date.now()}_${Math.random()}`;
+        whisperStore[viewId] = {
+            text: whisperText,
+            targetId: whisperData.targetId,
+            senderName: whisperData.senderName
+        };
+
+        // إرسال رسالة التنبيه للمستهدف بالصيغة المطلوبة
+        return ctx.reply(
+            `• يا حلو ⟵ ${whisperData.targetUser}\n• وصلتك همسة سرية من ⟵ ${whisperData.senderName}\n• انت وحدك تقدر تشوفها`,
+            {
+                reply_to_message_id: ctx.message.message_id,
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback('رؤية الهمسة', `show_whisper_${viewId}`)],
+                    [Markup.button.callback('رد على الهمسة ↗', `reply_whisper_${userId}`)]
+                ])
+            }
+        );
+    }
+    return next();
+});
+
+// عرض محتوى الهمسة عند الضغط على الزر (تطلع بـ Alert مثل الصورة)
+bot.action(/^show_whisper_(.+)$/, (ctx) => {
+    const viewId = ctx.match[1];
+    const whisper = whisperStore[viewId];
+
+    if (!whisper) {
+        return ctx.answerCbQuery('⚠️ انتهت صلاحية هذه الهمسة أو تم قراءتها.', { show_alert: true });
+    }
+
+    // التحقق أن الشخص اللي ضغط هو المستهدف فقط
+    if (ctx.from.id !== whisper.targetId) {
+        return ctx.answerCbQuery('❌ انت وحدك لا يمكنك رؤيتها، هذه الهمسة ليست موجهة لك!', { show_alert: true });
+    }
+
+    // إظهار النص في نافذة منبثقة (Alert)
+    return ctx.answerCbQuery(whisper.text, { show_alert: true });
+});
+
+bot.action(/^reply_whisper_(\d+)$/, (ctx) => {
+    ctx.answerCbQuery('💬 قم بالرد على رسالة البوت واكتب ردك على الهمسة.');
+});
 
 // --- نظام الألعاب والفعاليات ---
 bot.hears(/^تعطيل الالعاب$/, (ctx) => {
@@ -352,15 +403,5 @@ bot.hears(/^(?:\/)?المالك$/, (ctx) => {
     );
 });
 
-bot.on('text', (ctx, next) => {
-    const text = ctx.message.text ? ctx.message.text.trim() : '';
-    if (text.includes('تورايف') || text.toLowerCase().includes('toraif')) {
-        const replies = ['هلا', 'عيوني', 'سم', 'امر', 'وش بغيت'];
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-        return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
-    }
-    return next();
-});
-
 bot.launch();
-console.log('Bot is running with Songs & Whispers features...');
+console.log('Bot is running with exact whisper and songs design...');
