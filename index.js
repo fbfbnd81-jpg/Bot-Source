@@ -4,7 +4,7 @@ const http = require('http');
 // هذا السيرفر ياخذ البورت من ريلواي بشكل صحيح ومضمون
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running!');
+    res.end(Botf is running!');
 });
 
 const PORT = process.env.PORT || 3000;
