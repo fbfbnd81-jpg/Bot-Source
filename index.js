@@ -8,6 +8,9 @@ const userStats = {};
 const mutedUsers = {}; 
 const globalMutedUsers = {}; 
 
+// حالة الألعاب (مفتوحة افتراضياً)
+let gamesEnabled = true;
+
 const ranksHierarchy = ['عضو', 'مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'Dev²🎖', 'Dev🎖️'];
 
 function getRoleLevel(role) {
@@ -60,6 +63,60 @@ bot.on('message', (ctx, next) => {
         userStats[chatId][userId].name = name;
     }
     return next();
+});
+
+// أوامر تعطيل وتفعيل الألعاب (خاصة بالديف فقط)
+bot.hears(/^تعطيل الالعاب$/, (ctx) => {
+    const senderRole = getUserRole(ctx);
+    if (senderRole !== 'Dev🎖️') {
+        return ctx.reply('• هذا الامر يخص ↤ ｢ Dev🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
+    }
+    gamesEnabled = false;
+    ctx.reply('🔒 تم تعطيل الألعاب والفعاليات بنجاح.', { reply_to_message_id: ctx.message.message_id });
+});
+
+bot.hears(/^تفعيل الالعاب$/, (ctx) => {
+    const senderRole = getUserRole(ctx);
+    if (senderRole !== 'Dev🎖️') {
+        return ctx.reply('• هذا الامر يخص ↤ ｢ Dev🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
+    }
+    gamesEnabled = true;
+    ctx.reply('🔓 تم تفعيل الألعاب والفعاليات بنجاح.', { reply_to_message_id: ctx.message.message_id });
+});
+
+// قائمة ألعاب البوت
+bot.hears(/^(?:\/)?الالعاب$/, (ctx) => {
+    if (!gamesEnabled) {
+        return ctx.reply('⚠️ عذراً، الألعاب معطلة حالياً من قبل المطور.', { reply_to_message_id: ctx.message.message_id });
+    }
+    const menu = `•  قائمة العاب البوت \n` +
+                 `━━━━━━━━━━\n` +
+                 `• ترتيب\n• سمايلات\n• اسئله\n• احكام\n• فنانين\n• حيوانات\n• زوم\n• المختلف\n• اكمل\n• العكس\n• حزوره\n• كرسي\n• حظي\n• عربي\n• اسالني\n• الروليت\n• رياضيات\n• انجليزي\n• اعلام\n• جمل\n• عواصم\n• حزر\n• صور\n• عقاب\n• دين\n• تفكيك\n• حجره\n• نمله\n• معاني\n• بات\n• خمن\n• كلمات\n• الحظ\n• ناقص\n• مصطلح\n• اختبار\n• مفرد\n• حروف\n` +
+                 `━━━━━━━━━━`;
+    ctx.reply(menu, { reply_to_message_id: ctx.message.message_id });
+});
+
+// تفاعل ألعاب الفعاليات (جمل، حروف، وغيرها من القائمة)
+const gameCommands = [
+    'ترتيب', 'سمايلات', 'اسئله', 'احكام', 'فنانين', 'حيوانات', 'زوم', 'المختلف', 
+    'اكمل', 'العكس', 'حزوره', 'كرسي', 'حظي', 'عربي', 'اسالني', 'الروليت', 
+    'رياضيات', 'انجليزي', 'اعلام', 'جمل', 'عواصم', 'حزر', 'صور', 'عقاب', 
+    'دين', 'تفكيك', 'حجره', 'نمله', 'معاني', 'بات', 'خمن', 'كلمات', 'الحظ', 
+    'ناقص', 'مصطلح', 'اختبار', 'مفرد', 'حروف'
+];
+
+bot.hears(new RegExp(`^(?:\\/)?(${gameCommands.join('|R')})$`), (ctx) => {
+    if (!gamesEnabled) {
+        return ctx.reply('⚠️ الألعاب معطلة حالياً.', { reply_to_message_id: ctx.message.message_id });
+    }
+    const gameName = ctx.match[1];
+    const responses = [
+        `🎮 لعبة [ ${gameName} ] بدأت! أسرع واحد يجاوب:\n• رتبة المشاركين جاهزة، اطلقوا الإبداع!`,
+        `🎯 حماس! فتحنا لعبة [ ${gameName} ]\n• نبي نشوف تفاعلكم يا ابطال.`,
+        `✨ لعبة [ ${gameName} ] اشتغلت، شارك معنا الآن!`
+    ];
+    const randomRes = responses[Math.floor(Math.random() * responses.length)];
+    ctx.reply(randomRes, { reply_to_message_id: ctx.message.message_id });
 });
 
 // معرفة الرتبة
@@ -205,7 +262,7 @@ bot.hears(/^رفع القيود$/, (ctx) => {
     ctx.reply('🔓 تم تنفيذ "رفع القيود" بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
 
-// تنزيل الكل (يعلمك برتبته الأصلية وينزله لعضو)
+// تنزيل الكل
 bot.hears(/^تنزيل الكل$/, (ctx) => {
     const chatId = ctx.chat.id;
     const senderRole = getUserRole(ctx);
@@ -218,15 +275,12 @@ bot.hears(/^تنزيل الكل$/, (ctx) => {
     const targetUser = ctx.message.reply_to_message.from.first_name;
 
     if (!userRoles[chatId]) userRoles[chatId] = {};
-    
-    // جلب رتبته الحالية قبل التنزيل
     const currentTargetRole = userRoles[chatId][targetId] || 'عضو';
 
     if (currentTargetRole === 'عضو') {
         return ctx.reply(`• المستخدم ↤︎ ｢ ${targetUser} ｣ هو بالفعل عضو ولا يحمل أي رتبة.`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // تنزيله وإرجاعه عضو
     userRoles[chatId][targetId] = 'عضو';
 
     ctx.reply(
@@ -253,4 +307,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running with custom demote message...');
+console.log('Bot is running with full games and control system...');
