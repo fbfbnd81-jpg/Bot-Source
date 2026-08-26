@@ -2,7 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const adminIds = []; // تقدر تحط الآي دي حقك هنا لو حبيت
+const adminIds = []; 
 const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
@@ -90,16 +90,22 @@ bot.hears(/^(?:\/)?تفاعل$/, (ctx) => {
     );
 });
 
-// رفع الرتب بالرد (بالشكل المطلوب بالضبط)
-bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|ديف2|ديف تو|ديف|ديف ون|ديف 1)$/, async (ctx) => {
+// رفع الرتب بالرد (حسب طلبك)
+bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|ديف2|ديف تو|ديف|مطور اساسي)$/, async (ctx) => {
     const chatId = ctx.chat.id;
     const senderRole = getUserRole(ctx);
     const senderLevel = getRoleLevel(senderRole);
     let inputRank = ctx.match[1];
     
     let targetRank = inputRank;
-    if (inputRank === 'ديف2' || inputRank === 'ديف تو') targetRank = 'Dev²🎖';
-    if (inputRank === 'ديف ون' || inputRank === 'ديف 1' || inputRank === 'ديف') targetRank = 'Dev🎖️';
+    // "رفع ديف" أو "رفع ديف2" أو "رفع ديف تو" ترفع لـ Dev²🎖 (ديف تو)
+    if (inputRank === 'ديف' || inputRank === 'ديف2' || inputRank === 'ديف تو') {
+        targetRank = 'Dev²🎖';
+    }
+    // "رفع مطور اساسي" ترفع لـ Dev🎖️ (ديف ون)
+    if (inputRank === 'مطور اساسي') {
+        targetRank = 'Dev🎖️';
+    }
 
     if (senderLevel < getRoleLevel('مالك اساسي') && senderRole !== 'Dev🎖️' && senderRole !== 'Dev²🎖') {
         return ctx.reply('• هذا الامر يخص ↤ ｢ مالك اساسي ｣', { reply_to_message_id: ctx.message.message_id });
@@ -115,7 +121,6 @@ bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|د
     if (!userRoles[chatId]) userRoles[chatId] = {};
     userRoles[chatId][targetId] = targetRank;
     
-    // الرد بالشكل المطلوب بالتمام
     ctx.reply(
         `• المستخدم ذا ↤︎ ｢ ${targetUser} ｣\n• تم رفعه [ ${targetRank} ]`,
         { reply_to_message_id: ctx.message.message_id }
@@ -234,5 +239,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running perfectly...');
-
+console.log('Bot is running with correct ranks mapping...');
