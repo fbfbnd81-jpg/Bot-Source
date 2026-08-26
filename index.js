@@ -1,4 +1,14 @@
 const { Telegraf, Markup } = require('telegraf');
+const http = require('http');
+
+// سيرفر وهمي بسيط عشان ريلواي يخليه شغال دايماً وما يصير أحمر
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running successfully!');
+}).listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
+});
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -17,6 +27,7 @@ function getRoleLevel(role) {
 }
 
 function getUserRole(ctx) {
+    if (!ctx.from || !ctx.chat) return 'عضو';
     const userId = ctx.from.id;
     const username = ctx.from.username ? ctx.from.username.toLowerCase() : '';
     const chatId = ctx.chat.id;
@@ -33,7 +44,7 @@ function getUserRole(ctx) {
 
 bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
-    const userName = ctx.from.first_name;
+    const userName = ctx.from.first_name || 'صديقي';
     ctx.reply(
         `اهلا بك يا قلبي 🫶 ــ ${userName}\n\n• انا اشغل لك اللي تبي بالمكالمة`,
         Markup.inlineKeyboard([
@@ -43,25 +54,27 @@ bot.start((ctx) => {
     );
 });
 
-// احصائيات الرسائل والتفاعل
+// احصائيات التفاعل وحماية المكتومين
 bot.on('message', (ctx, next) => {
-    if (ctx.chat && ctx.from && !ctx.from.is_bot) {
-        const chatId = ctx.chat.id;
-        const userId = ctx.from.id;
-        const name = ctx.from.first_name;
+    try {
+        if (ctx.chat && ctx.from && !ctx.from.is_bot) {
+            const chatId = ctx.chat.id;
+            const userId = ctx.from.id;
+            const name = ctx.from.first_name || 'مستخدم';
 
-        if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
-            try { ctx.deleteMessage(); } catch (e) {}
-            return;
-        }
+            if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
+                try { ctx.deleteMessage(); } catch (e) {}
+                return;
+            }
 
-        if (!userStats[chatId]) userStats[chatId] = {};
-        if (!userStats[chatId][userId]) {
-            userStats[chatId][userId] = { name: name, count: 0 };
+            if (!userStats[chatId]) userStats[chatId] = {};
+            if (!userStats[chatId][userId]) {
+                userStats[chatId][userId] = { name: name, count: 0 };
+            }
+            userStats[chatId][userId].count += 1;
+            userStats[chatId][userId].name = name;
         }
-        userStats[chatId][userId].count += 1;
-        userStats[chatId][userId].name = name;
-    }
+    } catch (e) {}
     return next();
 });
 
@@ -84,13 +97,11 @@ bot.hears(/^اهمس$/, (ctx) => {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
     }
 
-    const targetUser = ctx.message.reply_to_message.from.first_name;
+    const targetUser = ctx.message.reply_to_message.from.first_name || 'الشخص';
     const targetId = ctx.message.reply_to_message.from.id;
     const senderId = ctx.from.id;
-    const senderName = ctx.from.first_name;
+    const senderName = ctx.from.first_name || 'صديق';
 
-    const whisperId = `wh_${senderId}_${targetId}_${Date.now()}`;
-    
     whisperStore[senderId] = {
         targetId,
         targetUser,
@@ -118,43 +129,42 @@ bot.action(/^open_input_(\d+)$/, (ctx) => {
     ctx.reply(`✍️ أهلاً بك، أرسل الآن نص الهمسة في رسالة هنا وسيتم إرسالها سراً للشخص المستهدف.`);
 });
 
-// --- الردود العامة وكلمة تورايف والهمسات النصية ---
+// --- معالجة النصوص العامة والهمسات ---
 bot.on('text', (ctx, next) => {
-    const userId = ctx.from.id;
-    const text = ctx.message.text ? ctx.message.text.trim() : '';
+    try {
+        const userId = ctx.from.id;
+        const text = ctx.message.text ? ctx.message.text.trim() : '';
 
-    // معالجة إدخال الهمسة
-    if (whisperStore[userId] && whisperStore[userId].step === 'waiting_for_text') {
-        const whisperData = whisperStore[userId];
-        delete whisperStore[userId];
+        if (whisperStore[userId] && whisperStore[userId].step === 'waiting_for_text') {
+            const whisperData = whisperStore[userId];
+            delete whisperStore[userId];
 
-        const viewId = `vw_${Date.now()}_${Math.random()}`;
-        whisperStore[viewId] = {
-            text: text,
-            targetId: whisperData.targetId,
-            senderName: whisperData.senderName
-        };
+            const viewId = `vw_${Date.now()}_${Math.random()}`;
+            whisperStore[viewId] = {
+                text: text,
+                targetId: whisperData.targetId,
+                senderName: whisperData.senderName
+            };
 
-        try { ctx.deleteMessage(); } catch (e) {}
+            try { ctx.deleteMessage(); } catch (e) {}
 
-        return ctx.reply(
-            `• يا حلو ⟵ ${whisperData.targetUser}\n• وصلتك همسة سرية جديدة 🔐\n• انت وحدك تقدر تشوفها`,
-            {
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback('رؤية الهمسة', `read_wh_${viewId}`)],
-                    [Markup.button.callback('رد على الهمسة ↗', `reply_wh_${userId}`)]
-                ])
-            }
-        );
-    }
+            return ctx.reply(
+                `• يا حلو ⟵ ${whisperData.targetUser}\n• وصلتك همسة سرية جديدة 🔐\n• انت وحدك تقدر تشوفها`,
+                {
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback('رؤية الهمسة', `read_wh_${viewId}`)],
+                        [Markup.button.callback('رد على الهمسة ↗', `reply_wh_${userId}`)]
+                    ])
+                }
+            );
+        }
 
-    // ردود تورايف
-    if (text.includes('تورايف') || text.toLowerCase().includes('toraif')) {
-        const replies = ['هلا', 'عيوني', 'سم', 'امر', 'وش بغيت'];
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-        return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
-    }
-
+        if (text.includes('تورايف') || text.toLowerCase().includes('toraif')) {
+            const replies = ['هلا', 'عيوني', 'سم', 'امر', 'وش بغيت'];
+            const randomReply = replies[Math.floor(Math.random() * replies.length)];
+            return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
+        }
+    } catch (e) {}
     return next();
 });
 
@@ -229,7 +239,7 @@ bot.hears(new RegExp(`^(?:\\/)?(${gameCommands.join('|')})$`), (ctx) => {
     ctx.reply(randomRes, { reply_to_message_id: ctx.message.message_id });
 });
 
-// الرتب والتفاعل والكتم
+// الأوامر والرتب
 bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
     const role = getUserRole(ctx);
     const userId = ctx.from.id;
@@ -278,7 +288,7 @@ bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|د
         return ctx.reply('⚠️ يرجى الرد على رسالة العضو المراد رفع رتبته.', { reply_to_message_id: ctx.message.message_id });
     }
 
-    const targetUser = ctx.message.reply_to_message.from.first_name;
+    const targetUser = ctx.message.reply_to_message.from.first_name || 'عضو';
     const targetId = ctx.message.reply_to_message.from.id;
 
     if (!userRoles[chatId]) userRoles[chatId] = {};
@@ -299,7 +309,7 @@ bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
 
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ الرد على العضو مطلوب.', { reply_to_message_id: ctx.message.message_id });
     
-    const targetUser = ctx.message.reply_to_message.from.first_name;
+    const targetUser = ctx.message.reply_to_message.from.first_name || 'عضو';
     const targetId = ctx.message.reply_to_message.from.id;
     
     if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
@@ -330,7 +340,7 @@ bot.hears(/^(?:\/)?فك الكتم$/, async (ctx) => {
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ الرد على العضو مطلوب لفك كتمه.', { reply_to_message_id: ctx.message.message_id });
     
     const targetId = ctx.message.reply_to_message.from.id;
-    const targetUser = ctx.message.reply_to_message.from.first_name;
+    const targetUser = ctx.message.reply_to_message.from.first_name || 'عضو';
 
     if (mutedUsers[chatId] && mutedUsers[chatId][targetId]) {
         delete mutedUsers[chatId][targetId];
@@ -349,5 +359,8 @@ bot.hears(/^(?:\/)?المالك$/, (ctx) => {
     );
 });
 
-bot.launch();
-console.log('Bot is running successfully and stable!');
+bot.launch().then(() => {
+    console.log('Bot is running successfully with HTTP server!');
+}).catch(err => {
+    console.error('Failed to launch bot:', err);
+});
