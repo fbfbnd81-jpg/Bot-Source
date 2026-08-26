@@ -2,7 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const developers = ['j4xa7', 'to6ri', 'Evy', 'evelaf']; 
+const adminIds = []; // تقدر تحط الآي دي حقك هنا لو حبيت
 const userRoles = {};
 const userStats = {};
 const mutedUsers = {}; 
@@ -14,10 +14,17 @@ function getRoleLevel(role) {
     return ranksHierarchy.indexOf(role) !== -1 ? ranksHierarchy.indexOf(role) : 0;
 }
 
-function getUserRole(chatId, userId, username) {
-    if (username && developers.includes(username.toLowerCase())) {
+function getUserRole(ctx) {
+    const userId = ctx.from.id;
+    const username = ctx.from.username ? ctx.from.username.toLowerCase() : '';
+    const chatId = ctx.chat.id;
+
+    const devUsernames = ['j4xa7', 'to6ri', 'evy', 'evelaf'];
+    
+    if (devUsernames.includes(username) || adminIds.includes(userId.toString())) {
         return 'Dev🎖️';
     }
+
     if (!userRoles[chatId]) userRoles[chatId] = {};
     return userRoles[chatId][userId] || 'عضو';
 }
@@ -38,7 +45,6 @@ bot.on('message', (ctx, next) => {
     if (ctx.chat && ctx.from && !ctx.from.is_bot) {
         const chatId = ctx.chat.id;
         const userId = ctx.from.id;
-        const username = ctx.from.username;
         const name = ctx.from.first_name;
 
         if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
@@ -58,19 +64,16 @@ bot.on('message', (ctx, next) => {
 
 // معرفة الرتبة
 bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
-    const chatId = ctx.chat.id;
+    const role = getUserRole(ctx);
     const userId = ctx.from.id;
-    const username = ctx.from.username;
-    const role = getUserRole(chatId, userId, username);
-    ctx.reply(`• رتبتك هي ↤ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
+    ctx.reply(`• رتبتك هي ↤ ｢ ${role} ｣\n• آي دي حساَبك ↤ ${userId}`, { reply_to_message_id: ctx.message.message_id });
 });
 
 // التفاعل
 bot.hears(/^(?:\/)?تفاعل$/, (ctx) => {
     const chatId = ctx.chat.id;
     const userId = ctx.from.id;
-    const username = ctx.from.username;
-    const role = getUserRole(chatId, userId, username);
+    const role = getUserRole(ctx);
     
     if (!userStats[chatId] || !userStats[chatId][userId]) {
         return ctx.reply(`• رتبتك هي ↤ ｢ ${role} ｣\n• رسائلك بالتفاعل ↤ 1\n• ترتيبك بالمتفاعلين ↤ 1`, { reply_to_message_id: ctx.message.message_id });
@@ -87,21 +90,17 @@ bot.hears(/^(?:\/)?تفاعل$/, (ctx) => {
     );
 });
 
-// رفع الرتب (بكل الأشكال الممكنة)
+// رفع الرتب بالرد (بالشكل المطلوب بالضبط)
 bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|ديف2|ديف تو|ديف|ديف ون|ديف 1)$/, async (ctx) => {
     const chatId = ctx.chat.id;
-    const senderId = ctx.from.id;
-    const senderUsername = ctx.from.username;
+    const senderRole = getUserRole(ctx);
+    const senderLevel = getRoleLevel(senderRole);
     let inputRank = ctx.match[1];
     
     let targetRank = inputRank;
     if (inputRank === 'ديف2' || inputRank === 'ديف تو') targetRank = 'Dev²🎖';
     if (inputRank === 'ديف ون' || inputRank === 'ديف 1' || inputRank === 'ديف') targetRank = 'Dev🎖️';
 
-    const senderRole = getUserRole(chatId, senderId, senderUsername);
-    const senderLevel = getRoleLevel(senderRole);
-
-    // التحقق من الصلاحيات
     if (senderLevel < getRoleLevel('مالك اساسي') && senderRole !== 'Dev🎖️' && senderRole !== 'Dev²🎖') {
         return ctx.reply('• هذا الامر يخص ↤ ｢ مالك اساسي ｣', { reply_to_message_id: ctx.message.message_id });
     }
@@ -113,10 +112,12 @@ bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|د
     const targetUser = ctx.message.reply_to_message.from.first_name;
     const targetId = ctx.message.reply_to_message.from.id;
 
+    if (!userRoles[chatId]) userRoles[chatId] = {};
     userRoles[chatId][targetId] = targetRank;
     
+    // الرد بالشكل المطلوب بالتمام
     ctx.reply(
-        `• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• تم رفعه رتبة [ ${targetRank} ]`,
+        `• المستخدم ذا ↤︎ ｢ ${targetUser} ｣\n• تم رفعه [ ${targetRank} ]`,
         { reply_to_message_id: ctx.message.message_id }
     );
 });
@@ -124,7 +125,7 @@ bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|د
 // الكتم
 bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
     const chatId = ctx.chat.id;
-    const senderRole = getUserRole(chatId, ctx.from.id, ctx.from.username);
+    const senderRole = getUserRole(ctx);
     if (getRoleLevel(senderRole) < getRoleLevel('ميث')) {
         return ctx.reply('• هذا الامر يخص ↤ ｢ ميث ｣', { reply_to_message_id: ctx.message.message_id });
     }
@@ -141,10 +142,9 @@ bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
         await ctx.telegram.restrictChatMember(chatId, targetId, { permissions: { can_send_messages: false } });
     } catch (e) {}
 
-    ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• كتمته`, { reply_to_message_id: ctx.message.message_id });
+    ctx.reply(`• المستخدم ذا ↤︎ ｢ ${targetUser} ｣\n• كتمته`, { reply_to_message_id: ctx.message.message_id });
 });
 
-// قائمة المكتومين وفك الكتم (مم)
 bot.hears('مم', (ctx) => {
     const chatId = ctx.chat.id;
     if (!mutedUsers[chatId] || Object.keys(mutedUsers[chatId]).length === 0) {
@@ -158,7 +158,6 @@ bot.hears('مم', (ctx) => {
     ctx.reply(list, { reply_to_message_id: ctx.message.message_id });
 });
 
-// فك الكتم بالرد
 bot.hears(/^(?:\/)?فك الكتم$/, async (ctx) => {
     const chatId = ctx.chat.id;
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ الرد على العضو مطلوب لفك كتمه.', { reply_to_message_id: ctx.message.message_id });
@@ -171,33 +170,23 @@ bot.hears(/^(?:\/)?فك الكتم$/, async (ctx) => {
         try {
             await ctx.telegram.restrictChatMember(chatId, targetId, { permissions: { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true } });
         } catch (e) {}
-        return ctx.reply(`• تم فك الكتم عن ↤ ｢ ${targetUser} ｣`, { reply_to_message_id: ctx.message.message_id });
+        return ctx.reply(`• تم فك الكتم عن ↤︎ ｢ ${targetUser} ｣`, { reply_to_message_id: ctx.message.message_id });
     }
     ctx.reply('• هذا العضو ليس مكتوماً', { reply_to_message_id: ctx.message.message_id });
 });
 
-// الكتم العام (خخ)
 bot.hears(/^(?:\/)?خخ$/, (ctx) => {
     const chatId = ctx.chat.id;
-    const senderRole = getUserRole(chatId, ctx.from.id, ctx.from.username);
+    const senderRole = getUserRole(ctx);
     if (getRoleLevel(senderRole) < getRoleLevel('اكسترا')) {
         return ctx.reply('• هذا الامر يخص ↤ ｢ اكسترا🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
     }
-    
-    if (!globalMutedUsers[chatId] || Object.keys(globalMutedUsers[chatId]).length === 0) {
-        return ctx.reply('• لا يوجد مكتومين عام ,', { reply_to_message_id: ctx.message.message_id });
-    }
-
-    let list = '• قائمة المكتومين عام:\n';
-    for (const [id, name] of Object.entries(globalMutedUsers[chatId])) {
-        list += `- ｢ ${name} ｣\n`;
-    }
-    ctx.reply(list, { reply_to_message_id: ctx.message.message_id });
+    ctx.reply('• لا يوجد مكتومين عام ,', { reply_to_message_id: ctx.message.message_id });
 });
 
 bot.hears(/^الغاء التقييد$/, (ctx) => {
     const chatId = ctx.chat.id;
-    const senderRole = getUserRole(chatId, ctx.from.id, ctx.from.username);
+    const senderRole = getUserRole(ctx);
     if (getRoleLevel(senderRole) < getRoleLevel('مالك اساسي')) {
         return ctx.reply('• هذا الامر يخص ↤ ｢ مالك اساسي ｣', { reply_to_message_id: ctx.message.message_id });
     }
@@ -206,7 +195,7 @@ bot.hears(/^الغاء التقييد$/, (ctx) => {
 
 bot.hears(/^رفع القيود$/, (ctx) => {
     const chatId = ctx.chat.id;
-    const senderRole = getUserRole(chatId, ctx.from.id, ctx.from.username);
+    const senderRole = getUserRole(ctx);
     if (getRoleLevel(senderRole) < getRoleLevel('Dev²🎖')) {
         return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
     }
@@ -215,13 +204,14 @@ bot.hears(/^رفع القيود$/, (ctx) => {
 
 bot.hears(/^تنزيل الكل$/, (ctx) => {
     const chatId = ctx.chat.id;
-    const senderRole = getUserRole(chatId, ctx.from.id, ctx.from.username);
+    const senderRole = getUserRole(ctx);
     if (getRoleLevel(senderRole) < getRoleLevel('اكسترا')) {
         return ctx.reply('• هذا الامر يخص ↤ ｢ اكسترا🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
     }
     if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على الشخص.', { reply_to_message_id: ctx.message.message_id });
     
     const targetId = ctx.message.reply_to_message.from.id;
+    if (!userRoles[chatId]) userRoles[chatId] = {};
     userRoles[chatId][targetId] = 'عضو';
     ctx.reply('🔻 تمت إزالة رتبته وإرجاعه كـ [ عضو ] بنجاح.', { reply_to_message_id: ctx.message.message_id });
 });
@@ -244,4 +234,5 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running smoothly...');
+console.log('Bot is running perfectly...');
+
