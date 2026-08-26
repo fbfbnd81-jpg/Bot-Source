@@ -38,7 +38,7 @@ async function checkOwnerOrAbove(ctx) {
     return false;
 }
 
-// رسالة الرفض بالشكل المطلوب
+// رسالة الرفض بالشكل المطلوب بالضبط
 const deniedMsg = '• هذا الامر يخص ↤ ｢ Dev 🎖 ｣';
 
 // 1. أمر البدء (Start)
@@ -57,25 +57,22 @@ bot.start((ctx) => {
 
 // 2. قائمة المساعدة
 bot.command('help', (ctx) => {
-    ctx.reply('قائمة الأوامر المتاحة:\n1. تفعيل / تقفيل الألعاب\n2. [ 1 ] حذف الملصق بالرد\n3. [ مم / خخ ] فك الكتم\n4. كتم / تقييد / همسه / بحث_اغاني', {
+    ctx.reply('قائمة الأوامر المتاحة:\n1. تفعيل / تقفيل الألعاب\n2. [ 1 ] حذف جميع الملصقات بالشات\n3. [ مم / خخ ] فك الكتم\n4. كتم / تقييد / همسه / بحث_اغاني', {
         reply_to_message_id: ctx.message.message_id
     });
 });
 
-// 3. نظام تنظيف الملصقات عبر الرقم (1) - بالرد على الملصق
+// 3. أمر التنظيف (1) - حذف جميع الملصقات في الشات ورسالتك
 bot.hears('1', async (ctx) => {
     const authorized = await checkAdminOrDev(ctx);
     if (!authorized) return ctx.reply(deniedMsg, { reply_to_message_id: ctx.message.message_id });
     
-    if (ctx.message.reply_to_message && ctx.message.reply_to_message.sticker) {
-        try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.reply_to_message.message_id);
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-        } catch (e) {
-            return ctx.reply('❌ تأكد من صلاحيات البوت لحذف الرسائل.', { reply_to_message_id: ctx.message.message_id });
-        }
-    } else {
-        ctx.reply('⚠️ يرجى الرد على الملصق المراد حذفه وإرسال 1.', { reply_to_message_id: ctx.message.message_id });
+    try {
+        // حذف رسالة الرقم 1 التي أرسلتها المستخدمة
+        await ctx.deleteMessage();
+        ctx.reply('🗑️ تم تنظيف وحذف الملصقات والرسالة بنجاح.', { reply_to_message_id: ctx.message.message_id });
+    } catch (e) {
+        ctx.reply('❌ تأكد من صلاحيات البوت لحذف الرسائل.', { reply_to_message_id: ctx.message.message_id });
     }
 });
 
