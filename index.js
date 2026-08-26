@@ -2,10 +2,8 @@ const { Telegraf, Markup } = require('telegraf');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const developers = ['j4xa7', 'to6ri'];
-
-// تخزين التفاعل المؤقت في الذاكرة لكل قروب وعضو
-const userStats = {}; // { chatId: { userId: { name: '...', count: 0 } } }
+// تخزين التفاعل في الذاكرة
+const userStats = {};
 
 bot.start((ctx) => {
     const botUsername = ctx.botInfo.username;
@@ -19,7 +17,7 @@ bot.start((ctx) => {
     );
 });
 
-// تتبع رسائل الأعضاء لحساب التفاعل
+// تتبع رسائل الأعضاء لتفاعل "تفاعل"
 bot.on('message', (ctx, next) => {
     if (ctx.chat && ctx.from && !ctx.from.is_bot) {
         const chatId = ctx.chat.id;
@@ -31,7 +29,7 @@ bot.on('message', (ctx, next) => {
             userStats[chatId][userId] = { name: name, count: 0 };
         }
         userStats[chatId][userId].count += 1;
-        userStats[chatId][userId].name = name; // تحديث الاسم لو تغير
+        userStats[chatId][userId].name = name;
     }
     return next();
 });
@@ -45,7 +43,6 @@ bot.hears(/^(?:\/)?تفاعل$/, (ctx) => {
         return ctx.reply('• رتبتك هي ↤ ｢ Dev² 🎖 ｣\n• رسائلك بالتفاعل ↤ 1\n• ترتيبك بالمتفاعلين ↤ 1', { reply_to_message_id: ctx.message.message_id });
     }
 
-    // ترتيب الأعضاء تنازلياً حسب عدد الرسائل
     const sortedUsers = Object.entries(userStats[chatId])
         .sort((a, b) => b[1].count - a[1].count);
 
@@ -67,7 +64,7 @@ bot.hears(/^(?:\/)?المالك$/, (ctx) => {
     );
 });
 
-// 3. الكتم
+// 3. أمر الكتم (بالرد)
 bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على رسالة العضو.', { reply_to_message_id: ctx.message.message_id });
@@ -77,13 +74,12 @@ bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
     
     try {
         await ctx.telegram.restrictChatMember(ctx.chat.id, targetId, { permissions: { can_send_messages: false } });
-        ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• كتمته`, { reply_to_message_id: ctx.message.message_id });
-    } catch (e) {
-        ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• كتمته`, { reply_to_message_id: ctx.message.message_id });
-    }
+    } catch (e) {}
+
+    ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• كتمته`, { reply_to_message_id: ctx.message.message_id });
 });
 
-// 4. التقييد
+// 4. أمر التقييد (بالرد)
 bot.hears(/^(?:\/)?تقييد$/, async (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على رسالة العضو.', { reply_to_message_id: ctx.message.message_id });
@@ -93,10 +89,9 @@ bot.hears(/^(?:\/)?تقييد$/, async (ctx) => {
 
     try {
         await ctx.telegram.banChatMember(ctx.chat.id, targetId);
-        ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• تقييدته / حظرته`, { reply_to_message_id: ctx.message.message_id });
-    } catch (e) {
-        ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• تم التقييد`, { reply_to_message_id: ctx.message.message_id });
-    }
+    } catch (e) {}
+
+    ctx.reply(`• المستخدم ذا ↤ ｢ ${targetUser} ｣\n• تقييدته`, { reply_to_message_id: ctx.message.message_id });
 });
 
 // 5. فك الكتم (مم)
@@ -109,7 +104,7 @@ bot.hears('خخ', (ctx) => {
     ctx.reply('• لا يوجد مكتومين عام ,', { reply_to_message_id: ctx.message.message_id });
 });
 
-// 7. الرد عند ذكر اسم البوت (تورايف)
+// 7. الرد التلقائي عند كتابة اسم البوت (تورايف)
 bot.on('text', (ctx, next) => {
     const text = ctx.message.text ? ctx.message.text.trim() : '';
     
@@ -123,4 +118,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running with new features...');
+console.log('Bot is running with exact custom styling...');
