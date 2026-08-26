@@ -2,11 +2,11 @@ const { Telegraf, Markup } = require('telegraf');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const developers = ['j4xa7', 'to6ri', 'Evy', 'evelaf']; // حط يوزرك هنا لو تغير
+const developers = ['j4xa7', 'to6ri', 'Evy', 'evelaf']; 
 const userRoles = {};
 const userStats = {};
-const mutedUsers = {}; // تخزين المكتومين بكل قروب: { chatId: { userId: 'اسم العضو' } }
-const globalMutedUsers = {}; // للمكتومين عام (خخ)
+const mutedUsers = {}; 
+const globalMutedUsers = {}; 
 
 const ranksHierarchy = ['عضو', 'مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'Dev²🎖', 'Dev🎖️'];
 
@@ -41,7 +41,6 @@ bot.on('message', (ctx, next) => {
         const username = ctx.from.username;
         const name = ctx.from.first_name;
 
-        // منع المكتومين من الكلام
         if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
             try { ctx.deleteMessage(); } catch (e) {}
             return;
@@ -88,20 +87,21 @@ bot.hears(/^(?:\/)?تفاعل$/, (ctx) => {
     );
 });
 
-// رفع الرتب
-bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|ديف2|ديف تو|Dev²🎖|ديف ون|ديف 1|Dev🎖️)$/, async (ctx) => {
+// رفع الرتب (بكل الأشكال الممكنة)
+bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|ديف2|ديف تو|ديف|ديف ون|ديف 1)$/, async (ctx) => {
     const chatId = ctx.chat.id;
     const senderId = ctx.from.id;
     const senderUsername = ctx.from.username;
-    let targetRankInput = ctx.match[1];
+    let inputRank = ctx.match[1];
     
-    let targetRank = targetRankInput;
-    if (targetRankInput === 'ديف2' || targetRankInput === 'ديف تو') targetRank = 'Dev²🎖';
-    if (targetRankInput === 'ديف ون' || targetRankInput === 'ديف 1') targetRank = 'Dev🎖️';
+    let targetRank = inputRank;
+    if (inputRank === 'ديف2' || inputRank === 'ديف تو') targetRank = 'Dev²🎖';
+    if (inputRank === 'ديف ون' || inputRank === 'ديف 1' || inputRank === 'ديف') targetRank = 'Dev🎖️';
 
     const senderRole = getUserRole(chatId, senderId, senderUsername);
     const senderLevel = getRoleLevel(senderRole);
 
+    // التحقق من الصلاحيات
     if (senderLevel < getRoleLevel('مالك اساسي') && senderRole !== 'Dev🎖️' && senderRole !== 'Dev²🎖') {
         return ctx.reply('• هذا الامر يخص ↤ ｢ مالك اساسي ｣', { reply_to_message_id: ctx.message.message_id });
     }
@@ -121,7 +121,7 @@ bot.hears(/^رفع (مميز|مالك|مالك اساسي|ميث|اكسترا|د
     );
 });
 
-// الكتم (ميث فما فوق)
+// الكتم
 bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
     const chatId = ctx.chat.id;
     const senderRole = getUserRole(chatId, ctx.from.id, ctx.from.username);
@@ -244,4 +244,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot with Mute system is running...');
+console.log('Bot is running smoothly...');
