@@ -1,122 +1,117 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// مبرمجي البوت (حط معرفات التليجرام الرقمية أو الـ Usernames هنا)
-const developers = ['j4xa7', 'to6ri']; // حطوا يوزراتكم بدون @
+// مبرمجي البوت
+const developers = ['j4xa7', 'to6ri'];
 
-bot.start((ctx) => 
-const { Telegraf, Markup } = require('telegraf');
-
-// أمر الستارت مع الأزرار الشفافة
+// أمر البدء (Start) مع الأزرار الشفافة الفخمة
 bot.start((ctx) => {
-    const botUsername = ctx.botInfo.username; // يجيب يوزر بوتك تلقائياً
+    const botUsername = ctx.botInfo.username;
     
     ctx.reply(
         'اهلا بك يا قلبي 🫶 ــ Evy\n\n• انا اشغل لك اللي تبي بالمكالمة\n\nادعم هالمنصات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.',
         Markup.inlineKeyboard([
             [Markup.button.url('➕ أضفني في مجموعتك', `https://t.me/${botUsername}?startgroup=true`)],
-            [Markup.button.url('👤 المطور', 'https://t.me/j4xa7')] // حط يوزر حسابك هنا
+            [Markup.button.url('👤 المطور', 'https://t.me/j4xa7')]
         ])
     );
 });
 
-});
-
-// قائمة الأوامر بالعربي
+// قائمة الأوامر (مساعدة)
 bot.command('help', (ctx) => {
     ctx.reply(`
-قائمة الأوامر المتاحة:
-1. كتم / فك كتم (بالرد على الرسالة)
-2. تقييد / فك تقييد (بالرد على الرسالة)
-3. حظر / فك حظر (بالرد على الرسالة)
-4. رتبة مميز، مالك، مالك اساسي، ميث، اكسترا، ديف، مطور اساسي
-5. همسه (إرسال رسالة خاصة)
-6. بحث اغاني
-7. زواج (بالرد على الشخص + كتابة المهر ورقم)
-8. المالك
+قائمة الأوامر المتاحة (بالرد على الرسالة):
+1. كتم / فك_كتم
+2. حظر
+3. مميز، مالك، مالك اساسي، ميث، اكسترا، ديف، مطور اساسي
+4. همسه [النص]
+5. بحث_اغاني [اسم الأغنية]
+6. زواج [المهر ورقم]
+7. المالك
     `);
 });
 
-// 1. الكتم، التقييد، الحظر (تتم بالرد على الرسالة)
-bot.command('كتم', async (ctx) => {
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ الرد على رسالة العضو مطلوب.');
-    const chatId = ctx.chat.id;
-    const userId = ctx.message.reply_to_message.from.id;
+// أمر الكتم
+bot.hears(/^(?:\/)?كتم$/, async (ctx) => {
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو المراد كتمه.');
     try {
-        await ctx.telegram.restrictChatMember(chatId, userId, { permissions: { can_send_messages: false } });
+        await ctx.telegram.restrictChatMember(ctx.chat.id, ctx.message.reply_to_message.from.id, { 
+            permissions: { can_send_messages: false } 
+        });
         ctx.reply('🔇 تم كتم العضو بنجاح.');
     } catch (e) { ctx.reply('❌ حدث خطأ، تأكد من صلاحيات البوت.'); }
 });
 
-bot.command('فك_كتم', async (ctx) => {
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ الرد على رسالة العضو مطلوب.');
-    const chatId = ctx.chat.id;
-    const userId = ctx.message.reply_to_message.from.id;
+// أمر فك الكتم
+bot.hears(/^(?:\/)?فك_كتم$/, async (ctx) => {
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.');
     try {
-        await ctx.telegram.restrictChatMember(chatId, userId, { permissions: { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true } });
+        await ctx.telegram.restrictChatMember(ctx.chat.id, ctx.message.reply_to_message.from.id, { 
+            permissions: { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true } 
+        });
         ctx.reply('🔊 تم فك الكتم بنجاح.');
     } catch (e) { ctx.reply('❌ حدث خطأ.'); }
 });
 
-bot.command('حظر', async (ctx) => {
-    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ الرد على رسالة العضو مطلوب.');
-    const chatId = ctx.chat.id;
-    const userId = ctx.message.reply_to_message.from.id;
+// أمر الحظر
+bot.hears(/^(?:\/)?حظر$/, async (ctx) => {
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة العضو.');
     try {
-        await ctx.telegram.banChatMember(chatId, userId);
+        await ctx.telegram.banChatMember(ctx.chat.id, ctx.message.reply_to_message.from.id);
         ctx.reply('🔨 تم حظر العضو بنجاح.');
     } catch (e) { ctx.reply('❌ حدث خطأ.'); }
 });
 
-// 2. نظام الرتب (رفع رتب)
+// نظام الرتب
 const ranks = ['مميز', 'مالك', 'مالك اساسي', 'ميث', 'اكسترا', 'ديف', 'مطور اساسي'];
 ranks.forEach(rank => {
-    bot.command(rank, (ctx) => {
+    bot.hears(new RegExp(`^(?:\\/)?${rank}$`), (ctx) => {
         if (!ctx.message.reply_to_message) return ctx.reply(`⚠️ الرد على العضو مطلوب لتعيين رتبة: ${rank}`);
         const targetUser = ctx.message.reply_to_message.from.first_name;
         ctx.reply(`✨ تم تعيين رتبة [ ${rank} ] للعضو ${targetUser} بنجاح!`);
     });
 });
 
-// 3. همسة (مثال توضيحي)
-bot.command('همسه', (ctx) => {
-    ctx.reply('🔒 هذه الخاصية تستخدم لإرسال رسائل سرية، اكتب النص مع الأمر.');
+// نظام الهمسة
+bot.hears(/^(?:\/)?همسه(?:\s+(.+))?$/, async (ctx) => {
+    if (!ctx.message.reply_to_message) return ctx.reply('⚠️ يرجى الرد على رسالة الشخص المراد إرسال الهمسة له.');
+    const sender = ctx.from.first_name;
+    const recipient = ctx.message.reply_to_message.from.first_name;
+    const text = ctx.match[1] || 'رسالة سرية';
+    try {
+        await ctx.deleteMessage();
+        ctx.reply(`🔒 همسة سرية من **${sender}** إلى **${recipient}**:\n${text}`);
+    } catch (e) {
+        ctx.reply(`🔒 همسة من ${sender} إلى ${recipient}:\n${text}`);
+    }
 });
 
-// 4. بحث أغاني (بحث تجريبي)
-bot.command('بحث_اغاني', (ctx) => {
-    ctx.reply('🎵 جاري البحث عن الأغنية المطلوبة... (أدخل اسم الأغنية بعد الأمر)');
+// بحث أغاني
+bot.hears(/^(?:\/)?بحث_اغاني(?:\s+(.+))?$/, (ctx) => {
+    const query = ctx.match[1] || 'عامة';
+    ctx.reply(`🎵 جاري البحث عن: ${query} ...`);
 });
 
-// 5. تفاعلات الشات والمنشن التلقائي والمالك والألعاب والزواج
+// التفاعلات والمنشن والزواج
 bot.on('text', (ctx) => {
     const text = ctx.message.text;
 
-    // المنشن التلقائي للأسماء
     if (text.includes('ايلاف')) {
         return ctx.reply('إيلاف هنا: @j4xa7');
     }
     if (text.includes('توري')) {
         return ctx.reply('توري هنا: @to6ri');
     }
-
-    // أمر المالك
     if (text === 'المالك') {
         return ctx.reply('👑 بروفايل المالك الأساسي:\nحسابي: @j4xa7\nالمطورة: @to6ri');
     }
 
-    // 6. فعالية الزواج (بالرد على رسالة شخص + كتابة زواج والمهر ورقم)
     if (text.startsWith('زواج') && ctx.message.reply_to_message) {
         const groom = ctx.from.first_name;
         const bride = ctx.message.reply_to_message.from.first_name;
-        const details = text.replace('زواج', '').trim(); // ياخذ المهر ورقم
+        const details = text.replace('زواج', '').trim();
         return ctx.reply(`💍 ألف ألف مبروك الزواج!\nالعريس: ${groom}\nالعروسة: ${bride}\nالتفاصيل والمهر: ${details}\nبالتوفيق لكم! 🎉`);
-    }
-
-    // 7. ألعاب خفيفة (مثلاً كلمات أو مقالات أو العاب جماعية)
-    if (text === 'لعبة كلمات') {
-        ctx.reply('🎮 لعبة الكلمات: رتب الحرفين الآتيين (ق م ل) لتصبح كلمة مفيدة!');
     }
 });
 
