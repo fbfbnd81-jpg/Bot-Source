@@ -4,7 +4,7 @@ const fs = require('fs');
 
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running!');
+    res.end('Toraif Bot is active!');
 }).listen(process.env.PORT || 3000);
 
 const bot = new Telegraf('8963407967:AAEjxoIl2MYDghsdSVsAcWCEYRGrTqa_GS8');
@@ -13,7 +13,7 @@ const mutedUsers = {};
 const globalMutedUsers = {}; 
 const groupSettings = {}; 
 
-const DATA_FILE = './bot_database.json';
+const DATA_FILE = './toraif_database.json';
 let db = { roles: {}, stats: {} };
 
 if (fs.existsSync(DATA_FILE)) {
@@ -253,7 +253,6 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const targetRole = getUserRole(chatId, targetId, targetUser.username || '');
 
-            // فحص دقيق يمنع كتم أي شخص لديه رتبة ويرد بالصيغة المطلوبة تماماً
             if (targetRole !== 'عضو') {
                 return ctx.reply(`• ما تقدر تستخدم الامر على ⟵ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
             }
@@ -296,3 +295,6 @@ bot.on('message', async (ctx) => {
 });
 
 bot.launch();
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
