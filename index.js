@@ -1,4 +1,4 @@
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const http = require('http');
 
 http.createServer((req, res) => {
@@ -9,18 +9,42 @@ http.createServer((req, res) => {
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const antiSpamEnabled = {};
-const mutedUsers = {};       // الكتم العادي { chatId: { userId: true } }
-const globalMutedUsers = {}; // الكتم العام { userId: true }
+const mutedUsers = {};       // الكتم العادي
+const globalMutedUsers = {}; // الكتم العام
 
-function getRole(username) {
-    const devs = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
-    if (username && devs.includes(username.toLowerCase())) {
-        return 'Dev🎖️';
+// تخزين رتب الأعضاء لكل جروب { chatId: { userId: 'رتبة' } }
+const userRoles = {};
+
+// تحديد رتبة المستخدم (الافتراضية أو المخزنة)
+function getUserRole(chatId, userId, username) {
+    if (userRoles[chatId] && userRoles[chatId][userId]) {
+        return userRoles[chatId][userId];
+    }
+    // المطورين الأساسيين (Dev 1)
+    const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
+    if (username && devOnes.includes(username.toLowerCase())) {
+        return 'Dev 1';
     }
     return 'عضو';
 }
 
-// 1. التعامل مع الرسائل الجديدة (حماية الروابط والكتم والعام والأوامر)
+// ترتيب قوة الرتب للمقارنة (من الأضعف للأقوى)
+const roleHierarchy = {
+    'عضو': 0,
+    'مميز': 1,
+    'مالك': 2,
+    'مالك أساسي': 3,
+    'ميث': 4,
+    'إكسترا': 5,
+    'Dev 2': 6,
+    'Dev 1': 7
+};
+
+function hasPermission(userRole, requiredRole) {
+    return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
+}
+
+// 1. التعامل مع الرسائل الجديدة
 bot.on('message', async (ctx) => {
     try {
         if (!ctx.message || !ctx.chat || ctx.chat.type === 'private') return;
@@ -28,62 +52,104 @@ bot.on('message', async (ctx) => {
 
         const chatId = ctx.chat.id;
         const userId = ctx.from.id;
-        const name = ctx.from.first_name || 'مستخدم';
         const username = ctx.from.username || '';
-        const role = getRole(username);
+        const role = getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
 
-        // أ) التحقق من الكتم العام أو الكتم العادي بالجروب
-        if (role !== 'Dev🎖️') {
+        // أ) التحقق من الكتم العام أو الكتم العادي
+        if (role !== 'Dev 1' && role !== 'Dev 2' && role !== 'إكسترا') {
             if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
                 try { await ctx.deleteMessage(); } catch (e) {}
                 return;
             }
         }
 
-        // ب) فحص الروابط إذا المخالفات مقفلة
-        if (antiSpamEnabled[chatId] && role !== 'Dev🎖️') {
-            const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
-            if (hasLink) {
+        // ب) الحماية (المميز، المالك، المالك الأساسي والديفات مستثنين من الحماية مثل الإنجليزي والرسائل الطويلة)
+        const isProtected = roleHierarchy[role] >= roleHierarchy['مميز'];
+        
+        if (!isProtected) {
+            // حماية الروابط إذا المخالفات مقفلة
+            if (antiSpamEnabled[chatId]) {
+                const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
+                if (hasLink) {
+                    try { await ctx.deleteMessage(); } catch (e) {}
+                    return;
+                }
+            }
+            // حماية الكلام الإنجليزي الكثير أو الرسائل الطويلة جداً للأعضاء العاديين
+            const hasEnglish = /[a-zA-Z]{5,}/.test(text);
+            if (hasEnglish && text.length > 100) {
                 try { await ctx.deleteMessage(); } catch (e) {}
                 return;
             }
         }
 
-        // جـ) الأوامر والردود
+        // جـ) الأوامر والردود العامة
         if (text === 'رتبتي' || text === '/رتبتي') {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣\n• آي دي حسابك ⟵ ${userId}`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'فتح المخالفات') {
-            if (role !== 'Dev🎖️') return ctx.reply('• هذا الأمر يخص المطورين فقط ⟵ ｢ Dev🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Dev 2')) return ctx.reply('• هذا الأمر يخص الديفات والإدارة العليا فقط.', { reply_to_message_id: ctx.message.message_id });
             antiSpamEnabled[chatId] = false;
             return ctx.reply('🔓 تم فتح المخالفات بنجاح.', { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'قفل المخالفات') {
-            if (role !== 'Dev🎖️') return ctx.reply('• هذا الأمر يخص المطورين فقط ⟵ ｢ Dev🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Dev 2')) return ctx.reply('• هذا الأمر يخص الديفات والإدارة العليا فقط.', { reply_to_message_id: ctx.message.message_id });
             antiSpamEnabled[chatId] = true;
             return ctx.reply('🔒 تم قفل المخالفات وحماية الجروب بنجاح.', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // د) قائمة المكتومين (مم) والعام (خخ)
+        // د) قوائم المكتومين (مم / خخ)
         if (text === 'مم') {
+            if (!hasPermission(role, 'ميث')) return ctx.reply('• ليس لديك صلاحية لعرض المكتومين.', { reply_to_message_id: ctx.message.message_id });
             const mutedList = mutedUsers[chatId] ? Object.keys(mutedUsers[chatId]) : [];
             if (mutedList.length === 0) return ctx.reply('• لا يوجد مكتومين .', { reply_to_message_id: ctx.message.message_id });
             return ctx.reply(`• عدد المكتومين في الجروب: ${mutedList.length}`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'خخ') {
+            if (!hasPermission(role, 'إكسترا')) return ctx.reply('• ليس لديك صلاحية لعرض المكتومين عام.', { reply_to_message_id: ctx.message.message_id });
             const globalList = Object.keys(globalMutedUsers);
             if (globalList.length === 0) return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
             return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // هـ) أوامر الإدارة بالرد على الشخص
+        // هـ) أوامر رفع ورتب الأعضاء (مالك أساسي فأعلى)
+        if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('⚠️ يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+
+            if (text === 'تنزيل الكل') {
+                if (!hasPermission(role, 'إكسترا')) return ctx.reply('• ليس لديك صلاحية لتنزيل الرتب.', { reply_to_message_id: ctx.message.message_id });
+                if (!userRoles[chatId]) userRoles[chatId] = {};
+                userRoles[chatId][targetId] = 'عضو';
+                return ctx.reply(`• المستخدم ذا ⟵ ｢ ${targetName} ｣\n• تم تنزيله من الرتبة ( عضو )`, { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text.startsWith('رفع ')) {
+                const requestedRank = text.replace('رفع ', '').trim();
+                // المالك الأساسي يقدر يرفع الرتب اللي تحته فقط (مميز، مالك، مالك أساسي) ولا يقدر يرفع ميث أو ديف
+                if (role === 'مالك أساسي' && ['ميث', 'إكسترا', 'Dev 2', 'Dev 1'].includes(requestedRank)) {
+                    return ctx.reply('❌ عذراً، لا يمكنك رفع شخص لهذه الرتبة العالية.', { reply_to_message_id: ctx.message.message_id });
+                }
+                if (!hasPermission(role, 'مالك أساسي')) {
+                    return ctx.reply('• أمر الرفع يتطلب رتبة (مالك أساسي) فما فوق.', { reply_to_message_id: ctx.message.message_id });
+                }
+
+                if (!userRoles[chatId]) userRoles[chatId] = {};
+                userRoles[chatId][targetId] = requestedRank;
+                return ctx.reply(`• المستخدم ذا ⟵ ｢ ${targetName} ｣\n• تم رفعه ⟵ ｢ ⭐ ${requestedRank} ｣`, { reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
+        // و) أوامر الإدارة والكتم والتقييد بالرد
         if (['كتم', 'كتم عام', 'تقييد', 'طرد', 'حظر', 'فك الكتم', 'رفع القيود', 'الغاء التقييد'].includes(text)) {
-            if (role !== 'Dev🎖️') return ctx.reply('• هذا الأمر يخص المطورين فقط ⟵ ｢ Dev🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
-            
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('⚠️ يرجى الرد على الرسالة لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
             }
@@ -93,64 +159,69 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
 
             if (text === 'كتم') {
+                if (!hasPermission(role, 'ميث')) return ctx.reply('• أمر الكتم يتطلب رتبة (ميث) فما فوق.', { reply_to_message_id: ctx.message.message_id });
                 if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
                 mutedUsers[chatId][targetId] = true;
                 return ctx.reply(`• المستخدم ذا ⟵ ｢ ${targetName} ｣\n• كتمته .`, { reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'كتم عام') {
+                if (!hasPermission(role, 'إكسترا')) return ctx.reply('• أمر الكتم العام يتطلب رتبة (إكسترا) فما فوق.', { reply_to_message_id: ctx.message.message_id });
                 globalMutedUsers[targetId] = true;
                 return ctx.reply(`• المستخدم ذا ⟵ ｢ ${targetName} ｣\n• كتمته عام .`, { reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'تقييد') {
+                if (!hasPermission(role, 'Dev 2')) return ctx.reply('• أمر التقييد يتطلب رتبة (Dev 2) فما فوق.', { reply_to_message_id: ctx.message.message_id });
                 try {
                     await ctx.restrictChatMember(targetId, { permissions: { can_send_messages: false } });
                     return ctx.reply(`• تم تقييد العضو ⟵ ｢ ${targetName} ｣ بنجاح.`, { reply_to_message_id: ctx.message.message_id });
                 } catch (e) {
-                    return ctx.reply('❌ لا يمكنني تقييد هذا العضو (قد يكون مشرفاً).', { reply_to_message_id: ctx.message.message_id });
+                    return ctx.reply('❌ لا يمكنني تقييد هذا العضو.', { reply_to_message_id: ctx.message.message_id });
                 }
             }
 
-            if (text === 'طرد') {
+            if (text === 'طرد' || text === 'حظر') {
+                if (!hasPermission(role, 'Dev 2')) return ctx.reply('• هذا الأمر يتطلب رتبة (Dev 2) فما فوق.', { reply_to_message_id: ctx.message.message_id });
                 try {
-                    await ctx.unbanChatMember(targetId); // طرد بدون حظر نهائي
-                    return ctx.reply(`• تم طرد العضو ⟵ ｢ ${targetName} ｣ بنجاح.`, { reply_to_message_id: ctx.message.message_id });
+                    if (text === 'طرد') await ctx.unbanChatMember(targetId);
+                    else await ctx.banChatMember(targetId);
+                    return ctx.reply(`• تم ${text} العضو ⟵ ｢ ${targetName} ｣ بنجاح.`, { reply_to_message_id: ctx.message.message_id });
                 } catch (e) {
-                    return ctx.reply('❌ لا يمكنني طرد هذا العضو.', { reply_to_message_id: ctx.message.message_id });
+                    return ctx.reply('❌ لا يمكنني تنفيذ الأمر على هذا العضو.', { reply_to_message_id: ctx.message.message_id });
                 }
             }
 
-            if (text === 'حظر') {
+            if (text === 'الغاء التقييد') {
+                if (!hasPermission(role, 'مالك أساسي')) return ctx.reply('• أمر إلغاء التقييد يتطلب (مالك أساسي) فما فوق.', { reply_to_message_id: ctx.message.message_id });
                 try {
-                    await ctx.banChatMember(targetId);
-                    return ctx.reply(`• تم حظر العضو ⟵ ｢ ${targetName} ｣ نهائياً.`, { reply_to_message_id: ctx.message.message_id });
+                    await ctx.unbanChatMember(targetId);
+                    return ctx.reply(`• تم الغاء التقييد عن العضو ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
                 } catch (e) {
-                    return ctx.reply('❌ لا يمكنني حظر هذا العضو.', { reply_to_message_id: ctx.message.message_id });
+                    return ctx.reply('❌ حدث خطأ.', { reply_to_message_id: ctx.message.message_id });
                 }
             }
 
-            if (['فك الكتم', 'رفع القيود', 'الغاء التقييد'].includes(text)) {
+            if (['فك الكتم', 'رفع القيود'].includes(text)) {
+                if (!hasPermission(role, 'Dev 2')) return ctx.reply('• أمر (رفع القيود) خاص بالديف تو ومن فوقه.', { reply_to_message_id: ctx.message.message_id });
                 if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
                 delete globalMutedUsers[targetId];
                 try {
-                    await ctx.unbanChatMember(targetId); // يرفع الحظر والتقييد والكتم
-                    return ctx.reply(`• تم رفع القيود وفك الكتم عن العضو ⟵ ｢ ${targetName} ｣ بنجاح.`, { reply_to_message_id: ctx.message.message_id });
+                    await ctx.unbanChatMember(targetId);
+                    return ctx.reply(`• تم رفع القيود وفك الكتم عن ⟵ ｢ ${targetName} ｣ بنجاح.`, { reply_to_message_id: ctx.message.message_id });
                 } catch (e) {
-                    return ctx.reply(`• تم فك الكتم الداخلي عن ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
+                    return ctx.reply(`• تم فك الكتم عن ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
                 }
             }
         }
 
-        // و) الردود التلقائية (توري، ايفي، ايلاف، تورايف)
+        // ز) الردود التلقائية
         if (text === 'توري') {
             return ctx.reply('• توري ⟵ @to6ri', { reply_to_message_id: ctx.message.message_id });
         }
-
         if (text === 'ايفي' || text === 'ايلاف') {
             return ctx.reply('• المطور ⟵ @j4xa7', { reply_to_message_id: ctx.message.message_id });
         }
-
         if (text === 'تورايف') {
             const replies = ['عيوني 🤍', 'أمر؟ 👀', 'سم 🫶', 'وش بغيت؟ 🦦', 'عيون ايفي وتوري ✨', 'هلا 🤍'];
             const randomReply = replies[Math.floor(Math.random() * replies.length)];
@@ -160,7 +231,7 @@ bot.on('message', async (ctx) => {
     } catch (e) {}
 });
 
-// 2. الحماية الصارمة: أي رسالة يتم تعديلها من أي عضو (غير المطور) تُحذف فوراً
+// 2. حماية التعديل (أي عضو عادي يعدل رسالته تحذف فوراً، أما الرتب المحمية فتعديلهم مسموح)
 bot.on('edited_message', async (ctx) => {
     try {
         const editedMsg = ctx.editedMessage;
@@ -168,10 +239,12 @@ bot.on('edited_message', async (ctx) => {
         if (!editedMsg.from || editedMsg.from.is_bot) return;
 
         const chatId = editedMsg.chat.id;
+        const userId = editedMsg.from.id;
         const username = editedMsg.from.username || '';
-        const role = getRole(username);
+        const role = getUserRole(chatId, userId, username);
 
-        if (role !== 'Dev🎖️') {
+        const isProtected = roleHierarchy[role] >= roleHierarchy['مميز'];
+        if (!isProtected) {
             await ctx.telegram.deleteMessage(chatId, editedMsg.message_id);
         }
     } catch (e) {}
