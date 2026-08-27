@@ -1,5 +1,6 @@
 const { Telegraf } = require('telegraf');
 const http = require('http');
+const fs = require('fs');
 
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -11,14 +12,29 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const antiSpamEnabled = {};
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
-const userRoles = {};
 
-// قواعد بيانات التفاعل (تخزين الرسائل لكل مستخدم في كل جروب)
-const chatStats = {}; // { chatId: { userId: { count: 0, name: '', username: '' } } }
+// ملف لحفظ الرتب والتفاعل بشكل دائم عشان ما تنمسح إذا طفا البوت
+const DATA_FILE = './bot_database.json';
+let db = { roles: {}, stats: {} };
+
+// تحميل البيانات القديمة إن وجدت
+if (fs.existsSync(DATA_FILE)) {
+    try {
+        db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        if (!db.roles) db.roles = {};
+        if (!db.stats) db.stats = {};
+    } catch (e) {}
+}
+
+function saveData() {
+    try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    } catch (e) {}
+}
 
 function getUserRole(chatId, userId, username) {
-    if (userRoles[chatId] && userRoles[chatId][userId]) {
-        return userRoles[chatId][userId];
+    if (db.roles[chatId] && db.roles[chatId][userId]) {
+        return db.roles[chatId][userId];
     }
     const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
     if (username && devOnes.includes(username.toLowerCase())) {
@@ -54,13 +70,14 @@ bot.on('message', async (ctx) => {
         const role = getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
 
-        // --- 1. نظام احتساب الرسائل والتفاعل ---
-        if (!chatStats[chatId]) chatStats[chatId] = {};
-        if (!chatStats[chatId][userId]) {
-            chatStats[chatId][userId] = { count: 0, name: name, username: username };
+        // --- احتساب التفاعل وتخزينه بشكل دائم ---
+        if (!db.stats[chatId]) db.stats[chatId] = {};
+        if (!db.stats[chatId][userId]) {
+            db.stats[chatId][userId] = { count: 0, name: name, username: username };
         }
-        chatStats[chatId][userId].count += 1;
-        chatStats[chatId][userId].name = name; // تحديث الاسم لو تغير
+        db.stats[chatId][userId].count += 1;
+        db.stats[chatId][userId].name = name;
+        saveData();
 
         if (role !== 'Dev🎖️' && role !== 'Dev 2' && role !== 'Myth🎖️') {
             if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
@@ -90,10 +107,9 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- 2. أمر "تفاعلي" (يعرض رسائل وترتيب الشخص) ---
+        // --- أمر تفاعلي ---
         if (text === 'تفاعلي') {
-            const userGroupStats = chatStats[chatId];
-            // ترتيب المستخدمين تنازلياً حسب عدد الرسائل لمعرفة الترتيب
+            const userGroupStats = db.stats[chatId] || {};
             const sortedUsers = Object.entries(userGroupStats)
                 .sort((a, b) => b[1].count - a[1].count);
 
@@ -108,14 +124,13 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyText, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- 3. أمر "المتفاعلين" (توب 20 مع المنشن والترتيب) ---
+        // --- أمر المتفاعلين (توب 20) ---
         if (text === 'المتفاعلين' || text === 'قائمة المتفاعلين') {
-            const userGroupStats = chatStats[chatId];
+            const userGroupStats = db.stats[chatId];
             if (!userGroupStats || Object.keys(userGroupStats).length === 0) {
                 return ctx.reply('• لا يوجد تفاعلات مسجلة حتى الآن.', { reply_to_message_id: ctx.message.message_id });
             }
 
-            // ترتيب الأعضاء وتحديد أول 20 شخص فقط
             const sortedUsers = Object.entries(userGroupStats)
                 .sort((a, b) => b[1].count - a[1].count)
                 .slice(0, 20);
@@ -123,7 +138,6 @@ bot.on('message', async (ctx) => {
             let msg = '🏆 **قائمة توب 20 متفاعل في الجروب:**\n\n';
             sortedUsers.forEach(([id, data], index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `🔹`;
-                // عمل منشن صحيح بالاسم
                 const mention = `[${data.name}](tg://user?id=${id})`;
                 msg += `${medal} ${index + 1}. ${mention} ⟵ [ ${data.count} رسالة ]\n`;
             });
@@ -131,18 +145,73 @@ bot.on('message', async (ctx) => {
             return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'فتح المخالفات') {
-            if (!hasPermission(role, 'Dev🎖️')) {
-                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+        // --- أوامر الرفع (محفوظة بشكل دائم) ---
+        if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
             }
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+
+            if (text === 'تنزيل الكل') {
+                if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• ليس لديك صلاحية لتنزيل الرتب.', { reply_to_message_id: ctx.message.message_id });
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = 'عضو';
+                saveData();
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم تنزيله من الرتبة ( عضو )`, { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text.startsWith('رفع ')) {
+                const rawRank = text.replace('رفع ', '').trim().toLowerCase();
+                let requestedRank = '';
+                let displayRank = '';
+
+                if (rawRank === 'ديف') {
+                    requestedRank = 'Dev 2';
+                    displayRank = 'Dev 2';
+                } else if (rawRank === 'مطور اساسي' || rawRank === 'مطور أساسي') {
+                    requestedRank = 'Dev🎖️';
+                    displayRank = 'Dev🎖️';
+                } else if (rawRank === 'ميث' || rawRank === 'm') {
+                    requestedRank = 'myth';
+                    displayRank = 'myth';
+                } else if (rawRank === 'اكس' || rawRank === 'إكسترا' || rawRank === 'اكسترا' || rawRank === 'ا') {
+                    requestedRank = 'Myth🎖️';
+                    displayRank = 'Myth🎖️';
+                } else if (rawRank === 'مميز') {
+                    requestedRank = 'مميز';
+                    displayRank = 'مميز';
+                } else if (rawRank === 'مالك') {
+                    requestedRank = 'مالك';
+                    displayRank = 'مالك';
+                } else if (rawRank === 'مالك اساسي' || rawRank === 'مالك أساسي') {
+                    requestedRank = 'مالك اساسي';
+                    displayRank = 'مالك اساسي';
+                } else {
+                    return ctx.reply('عذراً، هذه الرتبة غير صحيحة أو غير متوفرة.', { reply_to_message_id: ctx.message.message_id });
+                }
+
+                if (!hasPermission(role, 'مالك اساسي')) {
+                    return ctx.reply('• أمر الرفع يتطلب رتبة (مالك اساسي) فما فوق.', { reply_to_message_id: ctx.message.message_id });
+                }
+
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = requestedRank;
+                saveData(); // حفظ الرتبة فوراً بشكل دائم
+                
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم رفعه ${displayRank}`, { reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
+        if (text === 'فتح المخالفات') {
+            if (!hasPermission(role, 'Dev🎖️')) return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             antiSpamEnabled[chatId] = false;
             return ctx.reply(`من (${name})\nتم فتح المخالفات بنجاح 🔓`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'قفل المخالفات') {
-            if (!hasPermission(role, 'Dev🎖️')) {
-                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
-            }
+            if (!hasPermission(role, 'Dev🎖️')) return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             antiSpamEnabled[chatId] = true;
             return ctx.reply(`من (${name})\nتم تقفيل المخالفات بنجاح 🔒`, { reply_to_message_id: ctx.message.message_id });
         }
