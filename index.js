@@ -80,37 +80,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'فتح المخالفات') {
-            if (!hasPermission(role, 'Dev🎖️')) {
-                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
-            }
-            antiSpamEnabled[chatId] = false;
-            return ctx.reply(`من (${name})\nتم فتح المخالفات بنجاح 🔓`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'قفل المخالفات') {
-            if (!hasPermission(role, 'Dev🎖️')) {
-                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
-            }
-            antiSpamEnabled[chatId] = true;
-            return ctx.reply(`من (${name})\nتم تقفيل المخالفات بنجاح 🔒`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'مم') {
-            if (!hasPermission(role, 'myth')) return ctx.reply('• ليس لديك صلاحية لعرض المكتومين.', { reply_to_message_id: ctx.message.message_id });
-            const mutedList = mutedUsers[chatId] ? Object.keys(mutedUsers[chatId]) : [];
-            if (mutedList.length === 0) return ctx.reply('• لا يوجد مكتومين .', { reply_to_message_id: ctx.message.message_id });
-            return ctx.reply(`• عدد المكتومين في الجروب: ${mutedList.length}`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'خخ') {
-            if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• ليس لديك صلاحية لعرض المكتومين عام.', { reply_to_message_id: ctx.message.message_id });
-            const globalList = Object.keys(globalMutedUsers);
-            if (globalList.length === 0) return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
-            return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        // 1. أمر رفع مشرف أو ترقيه (حصري لرتبة Dev🎖️ فقط)
+        // تم نقل أمر (رفع مشرف، ترقيه، ترقية) هنا في البداية تماماً عشان يشتغل فوراً وبدون أي أخطاء
         if (text === 'رفع مشرف' || text === 'ترقيه' || text === 'ترقية') {
             if (!hasPermission(role, 'Dev🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -141,7 +111,36 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // 2. أوامر الرفع العادية تبدأ بـ "رفع " (مع وجود مسافة بعدها حصرياً عشان ما تتداخل مع رفع مشرف)
+        if (text === 'فتح المخالفات') {
+            if (!hasPermission(role, 'Dev🎖️')) {
+                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            }
+            antiSpamEnabled[chatId] = false;
+            return ctx.reply(`من (${name})\nتم فتح المخالفات بنجاح 🔓`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'قفل المخالفات') {
+            if (!hasPermission(role, 'Dev🎖️')) {
+                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            }
+            antiSpamEnabled[chatId] = true;
+            return ctx.reply(`من (${name})\nتم تقفيل المخالفات بنجاح 🔒`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'مم') {
+            if (!hasPermission(role, 'myth')) return ctx.reply('• ليس لديك صلاحية لعرض المكتومين.', { reply_to_message_id: ctx.message.message_id });
+            const mutedList = mutedUsers[chatId] ? Object.keys(mutedUsers[chatId]) : [];
+            if (mutedList.length === 0) return ctx.reply('• لا يوجد مكتومين .', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• عدد المكتومين في الجروب: ${mutedList.length}`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'خخ') {
+            if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• ليس لديك صلاحية لعرض المكتومين عام.', { reply_to_message_id: ctx.message.message_id });
+            const globalList = Object.keys(globalMutedUsers);
+            if (globalList.length === 0) return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
+        }
+
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -301,3 +300,4 @@ bot.on('edited_message', async (ctx) => {
 });
 
 bot.launch();
+
