@@ -63,6 +63,7 @@ bot.start((ctx) => {
     );
 });
 
+// معالجة الرسائل العامة (حماية الروابط وإحصائيات التفاعل والهمسات بالخاص)
 bot.on('message', async (ctx, next) => {
     try {
         if (!ctx.message || !ctx.message.text) return next();
@@ -103,18 +104,13 @@ bot.on('message', async (ctx, next) => {
                 return;
             }
 
-            // حماية الروابط
+            // حماية الروابط للعامة واستثناء المطورين
             const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
             if (hasLink && role !== 'Dev🎖️') {
                 try {
                     await ctx.deleteMessage();
                     return;
                 } catch (e) {}
-            }
-
-            // 🤍 الرد على أسماء المطورين (ايفي، توري) أو اسم البوت (تورايف)
-            if (/تورايف|ايفي|توري|evy|toraif|tory/i.test(text)) {
-                return ctx.reply('• عيون المطورين (ايفي وتوري) والبوت تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
             }
 
             if (!userStats[chatId]) userStats[chatId] = {};
@@ -128,6 +124,12 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
+// 🤍 الرد الفوري على اسم البوت والمطورين (تورايف، ايفي، توري)
+bot.hears(/^(تورايف|ايفي|توري|evy|toraif|tory)$/i, (ctx) => {
+    ctx.reply('• عيون المطورين (ايفي وتوري) والبوت تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
+});
+
+// أمر الهمسة بالرد على الرسالة
 bot.hears(/^(?:اهمس|همسه)$/i, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
@@ -201,7 +203,7 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Toraif Bot is running successfully with Evy & Tory!');
+    console.log('Toraif Bot is running successfully with full commands!');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
