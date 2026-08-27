@@ -17,7 +17,12 @@ const mutedUsers = {};
 const whisperSessions = {};
 const whisperStore = {};
 
+// تتبع السبام (الصوتيات والصور)
+const userVoiceTimestamps = {};
+const userPhotoTimestamps = {};
+
 let gamesEnabled = true;
+const antiSpamEnabled = {}; // حالة قفل المخالفات لكل جروب
 
 function getUserRole(ctx) {
     if (!ctx.from || !ctx.chat) return 'عضو';
@@ -63,88 +68,120 @@ bot.start((ctx) => {
     );
 });
 
+// معالجة كافة الرسائل والوسائط (نصوص، صور، فويس، مخالفات)
 bot.on('message', async (ctx, next) => {
     try {
-        if (!ctx.message || !ctx.message.text) return next();
-        const text = ctx.message.text.trim();
+        if (!ctx.chat || ctx.chat.type === 'private') return next();
+        if (!ctx.from || ctx.from.is_bot) return next();
 
-        if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id]) {
-            const data = whisperSessions[ctx.from.id];
-            const whisperText = text;
-            delete whisperSessions[ctx.from.id];
+        const chatId = ctx.chat.id;
+        const userId = ctx.from.id;
+        const name = ctx.from.first_name || 'مستخدم';
+        const role = getUserRole(ctx);
+        const now = Date.now();
 
-            const viewId = `vw_${Date.now()}_${Math.random()}`;
-            whisperStore[viewId] = {
-                text: whisperText,
-                targetId: data.targetId,
-                senderName: data.senderName
-            };
-
-            await bot.telegram.sendMessage(
-                data.chatId,
-                `• يا حلو ⟵ ${data.targetName}\n• وصلتك همسة سرية جديدة من ⟵ ${data.senderName}\n• انت وحدك تقدر تشوفها`,
-                Markup.inlineKeyboard([
-                    [Markup.button.callback('رؤية الهمسة', `read_wh_${viewId}`)],
-                    [Markup.button.url('رد على الهمسة ↗', `https://t.me/${ctx.botInfo.username}?start=wh_${ctx.from.id}_${encodeURIComponent(data.senderName)}_${data.chatId}`)]
-                ])
-            );
-
-            return ctx.reply('✅ تم إرسال همستك بنجاح إلى الجروب بشكل سري!');
+        if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return;
         }
 
-        if (ctx.chat && ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
-            const chatId = ctx.chat.id;
-            const userId = ctx.from.id;
-            const name = ctx.from.first_name || 'مستخدم';
-            const role = getUserRole(ctx);
+        const text = ctx.message.text || ctx.message.caption || '';
 
-            if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
-                try { ctx.deleteMessage(); } catch (e) {}
-                return;
-            }
+        // 🚨 1. فحص المحتوى المحظور (إباحي، مخدرات، كلمات مخله) تلقائياً وحذفه
+        const forbiddenWordsRegex = /إباحي|جنس|سكس|porn|sex|مخدرات|حشيش|هيروين|كوكايين|شبو|كبتاجون|حبوب|عقار مخدر/i;
+        if (forbiddenWordsRegex.test(text) && role !== 'Dev🎖️') {
+            try {
+                await ctx.deleteMessage();
+                await ctx.reply(`⚠️ تم حذف رسالة مخالفة (محتوى محظور) من العضو: ${name}`, { reply_to_message_id: ctx.message.message_id });
+            } catch (e) {}
+            return;
+        }
 
-            // حماية الروابط
+        // 🛡️ 2. حماية الروابط إذا كانت المخالفات مقفلة
+        if (antiSpamEnabled[chatId] && role !== 'Dev🎖️') {
             const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
-            if (hasLink && role !== 'Dev🎖️') {
+            if (hasLink) {
                 try {
                     await ctx.deleteMessage();
                     return;
                 } catch (e) {}
             }
+        }
 
-            // 1. إذا كتب توري -> منشن حسابها
+        // 🎙️ 3. قيد الفويس (أكثر من 10 بصمات خلال دقيقتين)
+        if (ctx.message.voice && role !== 'Dev🎖️') {
+            if (!userVoiceTimestamps[userId]) userVoiceTimestamps[userId] = [];
+            // تنظيف القديم أكثر من دقيقتين (120000 ms)
+            userVoiceTimestamps[userId] = userVoiceTimestamps[userId].filter(time => now - time < 120000);
+            userVoiceTimestamps[userId].push(now);
+
+            if (userVoiceTimestamps[userId].length > 10) {
+                try {
+                    await ctx.deleteMessage();
+                    await ctx.restrictChatMember(userId, {
+                        permissions: { can_send_messages: false }
+                    });
+                    return ctx.reply(`⚠️ تم تقييد العضو [ ${name} ] تلقائياً لتجاوزه حد الرسائل الصوتية (أكثر من 10 بصمات بدقتين).`);
+                } catch (e) {}
+            }
+        }
+
+        // 🖼️ 4. قيد الصور (إرسال صور متكررة بشكل مزعج)
+        if ((ctx.message.photo || ctx.message.document) && role !== 'Dev🎖️') {
+            if (!userPhotoTimestamps[userId]) userPhotoTimestamps[userId] = [];
+            userPhotoTimestamps[userId] = userPhotoTimestamps[userId].filter(time => now - time < 120000);
+            userPhotoTimestamps[userId].push(now);
+
+            if (userPhotoTimestamps[userId].length > 10) {
+                try {
+                    await ctx.deleteMessage();
+                    await ctx.restrictChatMember(userId, {
+                        permissions: { can_send_messages: false }
+                    });
+                    return ctx.reply(`⚠️ تم تقييد العضو [ ${name} ] تلقائياً بسبب إرسال صور ووسائط بشكل مفرط.`);
+                } catch (e) {}
+            }
+        }
+
+        // تفاعل المطورين والبوت
+        if (text) {
             if (/^توري$/i.test(text)) {
                 return ctx.reply('• توري ⟵ @to6ri', { reply_to_message_id: ctx.message.message_id });
             }
-
-            // 2. إذا كتب ايفي أو ايلاف -> منشن حساب j4xa7
             if (/^(ايفي|ايلاف)$/i.test(text)) {
                 return ctx.reply('• المطور ⟵ @j4xa7', { reply_to_message_id: ctx.message.message_id });
             }
-
-            // 3. إذا كتب تورايف -> ردود منوعة
             if (/^تورايف$/i.test(text)) {
-                const replies = [
-                    'عيوني 🤍',
-                    'أمر؟ 👀',
-                    'سم 🫶',
-                    'وش بغيت؟ 🦦',
-                    'عيون ايفي وتوري ✨',
-                    'هلا 🤍'
-                ];
+                const replies = ['عيوني 🤍', 'أمر؟ 👀', 'سم 🫶', 'وش بغيت؟ 🦦', 'عيون ايفي وتوري ✨', 'هلا 🤍'];
                 const randomReply = replies[Math.floor(Math.random() * replies.length)];
                 return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
             }
-
-            if (!userStats[chatId]) userStats[chatId] = {};
-            if (!userStats[chatId][userId]) {
-                userStats[chatId][userId] = { name: name, count: 0 };
-            }
-            userStats[chatId][userId].count += 1;
-            userStats[chatId][userId].name = name;
         }
+
+        if (!userStats[chatId]) userStats[chatId] = {};
+        if (!userStats[chatId][userId]) {
+            userStats[chatId][userId] = { name: name, count: 0 };
+        }
+        userStats[chatId][userId].count += 1;
+        userStats[chatId][userId].name = name;
+
     } catch (e) {}
     return next();
+});
+
+// 🔒 قفل وفتح المخالفحص (للديف/المطورين فقط)
+bot.hears(/^قفل المخالفات$/, (ctx) => {
+    if (getUserRole(ctx) !== 'Dev🎖️') return ctx.reply('• هذا الأمر يخص المطورين فقط ↤ ｢ Dev🎖️ ｣');
+    const chatId = ctx.chat.id;
+    antiSpamEnabled[chatId] = true;
+    ctx.reply('🔒 تم قفل المخالفات وحماية الجروب بالكامل بنجاح.');
+});
+
+bot.hears(/^فتح المخالفات$/, (ctx) => {
+    if (getUserRole(ctx) !== 'Dev🎖️') return ctx.reply('• هذا الأمر يخص المطورين فقط ↤ ｢ Dev🎖️ ｣');
+    const chatId = ctx.chat.id;
+    antiSpamEnabled[chatId] = false;
+    ctx.reply('🔓 تم فتح المخالفات.');
 });
 
 bot.hears(/^(?:اهمس|همسه)$/i, (ctx) => {
@@ -220,7 +257,7 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Toraif Bot is running successfully with all mentions and replies!');
+    console.log('Toraif Bot is running with full security and anti-spam system!');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
