@@ -33,7 +33,7 @@ function saveData() {
 function getUserRole(chatId, userId, username) {
     const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
     if (username && devOnes.includes(username.toLowerCase())) {
-        return 'Dev🎖️';
+        return 'Dev 1';
     }
     if (db.roles[chatId] && db.roles[chatId][userId]) {
         return db.roles[chatId][userId];
@@ -49,7 +49,8 @@ const roleHierarchy = {
     'myth': 4,
     'Myth🎖️': 5,
     'Dev 2': 6,
-    'Dev🎖️': 7
+    'Dev 1': 7,
+    'Dev🎖️': 8
 };
 
 function hasPermission(userRole, requiredRole) {
@@ -79,21 +80,21 @@ bot.on('message', async (ctx) => {
             };
         }
 
-        // فحص حصانة المالك أو المطور فما فوق
-        const isOwnerOrAbove = hasPermission(role, 'مالك') || hasPermission(role, 'Dev 2');
+        // الحصانة الكاملة لأصحاب الرتب والمطورين
+        const isProtectedUser = role !== 'عضو';
 
-        // فحص المكتومين (المالك والمطور مستحيل ينكتمون نهائياً)
-        if (!isOwnerOrAbove) {
+        // فحص المكتومين (أصحاب الرتب مستحيل ينكتمون نهائياً)
+        if (!isProtectedUser) {
             if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
                 try {
                     await ctx.deleteMessage();
                 } catch (e) {}
-                return; // إيقاف تام لأي معالجة للمكتوم
+                return; // إيقاف تام لمعالجة رسالة المكتوم
             }
         }
 
         // فحص تعديل الرسائل
-        if (isEdited && groupSettings[chatId].edit && !isOwnerOrAbove) {
+        if (isEdited && groupSettings[chatId].edit && !isProtectedUser) {
             try { await ctx.deleteMessage(); } catch (e) {}
             return;
         }
@@ -191,9 +192,9 @@ bot.on('message', async (ctx) => {
                 let requestedRank = '';
                 let displayRank = '';
 
-                if (rawRank === 'ديف') {
-                    requestedRank = 'Dev 2';
-                    displayRank = 'Dev 2';
+                if (rawRank === 'ديف' || rawRank === 'ديف ون' || rawRank === 'ديف 1') {
+                    requestedRank = 'Dev 1';
+                    displayRank = 'Dev 1';
                 } else if (rawRank === 'مطور اساسي' || rawRank === 'مطور أساسي') {
                     requestedRank = 'Dev🎖️';
                     displayRank = 'Dev🎖️';
@@ -256,9 +257,9 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const targetRole = getUserRole(chatId, targetId, targetUser.username || '');
 
-            // منع كتم المالك أو المطور فما فوق نهائياً
-            if (hasPermission(targetRole, 'مالك') || hasPermission(targetRole, 'Dev 2')) {
-                return ctx.reply('• لا يمكنك كتم شخص يحمل رتبة مالك أو أعلى!', { reply_to_message_id: ctx.message.message_id });
+            // منع كتم أي شخص يحمل رتبة (مثل توري أو غيرها)
+            if (targetRole !== 'عضو') {
+                return ctx.reply(`• ما تقدر تستخدم الامر على ⟵ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'كتم') {
@@ -299,4 +300,3 @@ bot.on('message', async (ctx) => {
 });
 
 bot.launch();
-
