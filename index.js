@@ -110,6 +110,38 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
         }
 
+        // أمر ترقية / رفع مشرف (يعطي إشراف في التليجرام رسمياً)
+        if (text === 'رفع مشرف' || text === 'ترقيه' || text === 'ترقية') {
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+            if (!hasPermission(role, 'مالك اساسي')) {
+                return ctx.reply('• أمر الترقية يتطلب رتبة (مالك اساسي) فما فوق.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+
+            try {
+                // إعطاء صلاحيات الإشراف في الجروب
+                await ctx.promoteChatMember(targetId, {
+                    can_manage_chat: true,
+                    can_delete_messages: true,
+                    can_manage_video_chats: true,
+                    can_restrict_members: true,
+                    can_promote_members: false,
+                    can_change_info: false,
+                    can_invite_users: true,
+                    can_pin_messages: true
+                });
+
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم ترقيته وعمل مشرف في الجروب بنجاح 🛡️`, { reply_to_message_id: ctx.message.message_id });
+            } catch (e) {
+                return ctx.reply('عذراً، لا يمكنني ترقية هذا العضو (تأكد أن البوت مشرف ولديه صلاحية إضافة مشرفين).', { reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
