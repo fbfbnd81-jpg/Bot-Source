@@ -125,7 +125,7 @@ bot.on('message', async (ctx) => {
                 let requestedRank = '';
                 let displayRank = '';
 
-                // مطابقة الكلمات المختصرة بالرتب المطلوبة
+                // فحص الكلمات بدقة، وأي كلمة عشوائية أخرى لن يتم قبولها
                 if (rawRank === 'ديف') {
                     requestedRank = 'Dev 2';
                     displayRank = 'Dev 2';
@@ -138,10 +138,17 @@ bot.on('message', async (ctx) => {
                 } else if (rawRank === 'اكس' || rawRank === 'إكسترا' || rawRank === 'اكسترا') {
                     requestedRank = 'Myth🎖️';
                     displayRank = 'Myth🎖️';
+                } else if (rawRank === 'مميز') {
+                    requestedRank = 'مميز';
+                    displayRank = 'مميز';
+                } else if (rawRank === 'مالك') {
+                    requestedRank = 'مالك';
+                    displayRank = 'مالك';
+                } else if (rawRank === 'مالك اساسي' || rawRank === 'مالك أساسي') {
+                    requestedRank = 'مالك اساسي';
+                    displayRank = 'مالك اساسي';
                 } else {
-                    // باقي الرتب العادية (مميز، مالك، مالك اساسي)
-                    requestedRank = text.replace('رفع ', '').trim();
-                    displayRank = requestedRank;
+                    return ctx.reply('عذراً، هذه الرتبة غير صحيحة أو غير متوفرة.', { reply_to_message_id: ctx.message.message_id });
                 }
 
                 if (role === 'مالك اساسي' && (requestedRank === 'myth' || requestedRank === 'Myth🎖️' || requestedRank === 'Dev 2' || requestedRank === 'Dev 1')) {
