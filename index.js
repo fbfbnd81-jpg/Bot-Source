@@ -67,7 +67,7 @@ bot.on('message', async (ctx, next) => {
     try {
         if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id] && ctx.message.text) {
             const data = whisperSessions[ctx.from.id];
-            const whisperText = ctx.message.text; // أي نص ترسله بالخاص هنا يعتبر هو الهمسة فوراً
+            const whisperText = ctx.message.text;
             
             delete whisperSessions[ctx.from.id];
 
@@ -78,7 +78,6 @@ bot.on('message', async (ctx, next) => {
                 senderName: data.senderName
             };
 
-            // إرسال الهمسة للقروب بالشكل المطلوب بالضبط
             await bot.telegram.sendMessage(
                 data.chatId,
                 `• يا حلو ⟵ ${data.targetName}\n• وصلتك همسة سرية جديدة من ⟵ ${data.senderName}\n• انت وحدك تقدر تشوفها`,
@@ -95,10 +94,24 @@ bot.on('message', async (ctx, next) => {
             const chatId = ctx.chat.id;
             const userId = ctx.from.id;
             const name = ctx.from.first_name || 'مستخدم';
+            const role = getUserRole(ctx);
 
             if (mutedUsers[chatId] && mutedUsers[chatId][userId]) {
                 try { ctx.deleteMessage(); } catch (e) {}
                 return;
+            }
+
+            // 🛡️ حماية متكاملة ونظيفة للقروبات (حذف الروابط للعامة واستثناء المطورين)
+            if (ctx.message && ctx.message.text) {
+                const text = ctx.message.text;
+                const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
+                
+                if (hasLink && role !== 'Dev🎖️') {
+                    try {
+                        await ctx.deleteMessage();
+                        return;
+                    } catch (e) {}
+                }
             }
 
             if (!userStats[chatId]) userStats[chatId] = {};
@@ -185,5 +198,8 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Bot is running successfully!');
+    console.log('Bot is running successfully with protection!');
 });
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
