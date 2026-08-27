@@ -110,13 +110,13 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر ترقية / رفع مشرف (يعطي إشراف في التليجرام رسمياً)
+        // أمر رفع مشرف أو ترقيه حصري لرتبة Dev🎖️ فقط
         if (text === 'رفع مشرف' || text === 'ترقيه' || text === 'ترقية') {
+            if (!hasPermission(role, 'Dev🎖️')) {
+                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            }
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
-            }
-            if (!hasPermission(role, 'مالك اساسي')) {
-                return ctx.reply('• أمر الترقية يتطلب رتبة (مالك اساسي) فما فوق.', { reply_to_message_id: ctx.message.message_id });
             }
 
             const targetUser = ctx.message.reply_to_message.from;
@@ -124,7 +124,6 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
 
             try {
-                // إعطاء صلاحيات الإشراف في الجروب
                 await ctx.promoteChatMember(targetId, {
                     can_manage_chat: true,
                     can_delete_messages: true,
@@ -301,4 +300,3 @@ bot.on('edited_message', async (ctx) => {
 });
 
 bot.launch();
-
