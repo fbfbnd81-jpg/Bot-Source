@@ -80,26 +80,22 @@ bot.on('message', async (ctx) => {
             };
         }
 
-        // الحصانة الكاملة لأصحاب الرتب والمطورين
         const isProtectedUser = role !== 'عضو';
 
-        // فحص المكتومين (أصحاب الرتب مستحيل ينكتمون نهائياً)
         if (!isProtectedUser) {
             if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
                 try {
                     await ctx.deleteMessage();
                 } catch (e) {}
-                return; // إيقاف تام لمعالجة رسالة المكتوم
+                return;
             }
         }
 
-        // فحص تعديل الرسائل
         if (isEdited && groupSettings[chatId].edit && !isProtectedUser) {
             try { await ctx.deleteMessage(); } catch (e) {}
             return;
         }
 
-        // احصائيات التفاعل
         if (!db.stats[chatId]) db.stats[chatId] = {};
         if (!db.stats[chatId][userId]) {
             db.stats[chatId][userId] = { count: 0, name: name, username: username };
@@ -257,7 +253,7 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const targetRole = getUserRole(chatId, targetId, targetUser.username || '');
 
-            // منع كتم أي شخص يحمل رتبة (مثل توري أو غيرها)
+            // فحص دقيق يمنع كتم أي شخص لديه رتبة ويرد بالصيغة المطلوبة تماماً
             if (targetRole !== 'عضو') {
                 return ctx.reply(`• ما تقدر تستخدم الامر على ⟵ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
             }
