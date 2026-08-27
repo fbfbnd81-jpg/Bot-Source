@@ -7,7 +7,6 @@ http.createServer((req, res) => {
     res.end('Bot is running!');
 }).listen(process.env.PORT || 3000);
 
-// تم وضع التوكن الخاص بك هنا مباشرة
 const bot = new Telegraf('8963407967:AAEjxoIl2MYDghsdSVsAcWCEYRGrTqa_GS8');
 
 const antiSpamEnabled = {};
@@ -123,7 +122,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyText, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر المتفاعلين (توب 20)
+        // أمر المتفاعلين (توب 20 بالشكل المطلوب بالضبط)
         if (text === 'المتفاعلين' || text === 'قائمة المتفاعلين') {
             const userGroupStats = db.stats[chatId];
             if (!userGroupStats || Object.keys(userGroupStats).length === 0) {
@@ -134,17 +133,17 @@ bot.on('message', async (ctx) => {
                 .sort((a, b) => b[1].count - a[1].count)
                 .slice(0, 20);
 
-            let msg = '🏆 **قائمة توب 20 متفاعل في الجروب:**\n\n';
+            let msg = 'توب اكثر 20 متفاعلين بالقروب :\n_________________________\n\n';
             sortedUsers.forEach(([id, data], index) => {
-                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `🔹`;
+                const formattedCount = data.count.toLocaleString(); // تنسيق الرقم بفواصل مثل 5,360
                 const mention = `[${data.name}](tg://user?id=${id})`;
-                msg += `${medal} ${index + 1}. ${mention} ⟵ [ ${data.count} رسالة ]\n`;
+                msg += `${index + 1} ) ${formattedCount} | ${mention}\n`;
             });
 
             return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر الرفع (محفوظة بشكل دائم)
+        // أوامر الرفع
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -204,13 +203,13 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'فتح المخالفات') {
-            if (!hasPermission(role, 'Dev🎖️')) return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Dev🎖️')) return ctx.reply('• هذا الامر يخص ↤ ｢ Dev ⁠｣', { reply_to_message_id: ctx.message.message_id });
             antiSpamEnabled[chatId] = false;
             return ctx.reply(`من (${name})\nتم فتح المخالفات بنجاح 🔓`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'قفل المخالفات') {
-            if (!hasPermission(role, 'Dev🎖️')) return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Dev🎖️')) return ctx.reply('• هذا الامر يخص ↤ ｢ Dev ⁠｣', { reply_to_message_id: ctx.message.message_id });
             antiSpamEnabled[chatId] = true;
             return ctx.reply(`من (${name})\nتم تقفيل المخالفات بنجاح 🔒`, { reply_to_message_id: ctx.message.message_id });
         }
