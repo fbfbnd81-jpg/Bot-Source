@@ -110,7 +110,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر رفع مشرف أو ترقيه حصري لرتبة Dev🎖️ فقط
+        // 1. أمر رفع مشرف أو ترقيه (حصري لرتبة Dev🎖️ فقط)
         if (text === 'رفع مشرف' || text === 'ترقيه' || text === 'ترقية') {
             if (!hasPermission(role, 'Dev🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -141,6 +141,7 @@ bot.on('message', async (ctx) => {
             }
         }
 
+        // 2. أوامر الرفع العادية تبدأ بـ "رفع " (مع وجود مسافة بعدها حصرياً عشان ما تتداخل مع رفع مشرف)
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -281,7 +282,7 @@ bot.on('message', async (ctx) => {
     } catch (e) {}
 });
 
-bot.on('edited_message async (ctx) => {
+bot.on('edited_message', async (ctx) => {
     try {
         const editedMsg = ctx.editedMessage;
         if (!editedMsg || !editedMsg.chat || editedMsg.chat.type === 'private') return;
