@@ -34,7 +34,6 @@ function getUserRole(chatId, userId, username) {
     if (db.roles[chatId] && db.roles[chatId][userId]) {
         return db.roles[chatId][userId];
     }
-    // تم إضافة يوزراتكم هنا عشان تثبت الرتبة فوراً وما ترجع "عضو"
     const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
     if (username && devOnes.includes(username.toLowerCase())) {
         return 'Dev🎖️';
@@ -78,11 +77,18 @@ bot.on('message', async (ctx) => {
         db.stats[chatId][userId].name = name;
         saveData();
 
+        if (role !== 'Dev🎖️' && role !== 'Dev 2' && role !== 'Myth🎖️') {
+            if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
+                try { await ctx.deleteMessage(); } catch (e) {}
+                return;
+            }
+        }
+
         if (text === 'رتبتي' || text === '/رتبتي') {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر تفاعلي (مصلح بالكامل عشان ما يعلق)
+        // أمر تفاعلي
         if (text === 'تفاعلي') {
             const userGroupStats = db.stats[chatId] || {};
             const sortedUsers = Object.entries(userGroupStats)
@@ -99,7 +105,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyText, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر المتفاعلين (توب 20 بالشكل النظيف المطلوب)
+        // أمر المتفاعلين
         if (text === 'المتفاعلين' || text === 'قائمة المتفاعلين') {
             const userGroupStats = db.stats[chatId];
             if (!userGroupStats || Object.keys(userGroupStats).length === 0) {
@@ -120,6 +126,58 @@ bot.on('message', async (ctx) => {
             return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
+        // أمر مم (عرض عدد المكتومين بالقروب وفك الكتم عن الجميع)
+        if (text === 'مم') {
+            const mutedList = mutedUsers[chatId] ? Object.keys(mutedUsers[chatId]) : [];
+            if (mutedList.length === 0) return ctx.reply('• لا يوجد مكتومين .', { reply_to_message_id: ctx.message.message_id });
+            
+            const count = mutedList.length;
+            mutedUsers[chatId] = {}; // مسح الكل وفك الكتم
+            return ctx.reply(`• عدد المكتومين في القروب: ${count}\n• تم فك الكتم عن الجميع .`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أمر خخ (عرض عدد المكتومين عام وفك الكتم العام عن الجميع)
+        if (text === 'خخ') {
+            const globalList = Object.keys(globalMutedUsers);
+            if (globalList.length === 0) return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
+            
+            const count = globalList.length;
+            for (let id in globalMutedUsers) delete globalMutedUsers[id]; // مسح الكل عام وفك الكتم
+            return ctx.reply(`• عدد المكتومين عام: ${count}\n• تم فك الكتم العام عن الجميع .`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أوامر الكتم الفردي بالرد
+        if (['كتم', 'كتم عام', 'فك الكتم', 'فك الكتم العام'].includes(text)) {
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الرسالة لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+
+            if (text === 'كتم') {
+                if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
+                mutedUsers[chatId][targetId] = true;
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• كتمته .`, { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'كتم عام') {
+                globalMutedUsers[targetId] = true;
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• كتمته عام .`, { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'فك الكتم') {
+                if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
+                return ctx.reply(`• تم فك الكتم عن ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'فك الكتم العام') {
+                delete globalMutedUsers[targetId];
+                return ctx.reply(`• تم فك الكتم العام عن ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
         if (text === 'توري') {
             return ctx.reply('• توري ⟵ @to6ri', { reply_to_message_id: ctx.message.message_id });
         }
@@ -136,3 +194,4 @@ bot.on('message', async (ctx) => {
 });
 
 bot.launch();
+
