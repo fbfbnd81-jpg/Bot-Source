@@ -7,17 +7,16 @@ http.createServer((req, res) => {
     res.end('Bot is running!');
 }).listen(process.env.PORT || 3000);
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+// تم وضع التوكن الخاص بك هنا مباشرة
+const bot = new Telegraf('8963407967:AAEjxoIl2MYDghsdSVsAcWCEYRGrTqa_GS8');
 
 const antiSpamEnabled = {};
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
 
-// ملف لحفظ الرتب والتفاعل بشكل دائم عشان ما تنمسح إذا طفا البوت
 const DATA_FILE = './bot_database.json';
 let db = { roles: {}, stats: {} };
 
-// تحميل البيانات القديمة إن وجدت
 if (fs.existsSync(DATA_FILE)) {
     try {
         db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -70,7 +69,7 @@ bot.on('message', async (ctx) => {
         const role = getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
 
-        // --- احتساب التفاعل وتخزينه بشكل دائم ---
+        // احتساب وتخزين الرسائل والتفاعل بشكل دائم
         if (!db.stats[chatId]) db.stats[chatId] = {};
         if (!db.stats[chatId][userId]) {
             db.stats[chatId][userId] = { count: 0, name: name, username: username };
@@ -107,7 +106,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- أمر تفاعلي ---
+        // أمر تفاعلي
         if (text === 'تفاعلي') {
             const userGroupStats = db.stats[chatId] || {};
             const sortedUsers = Object.entries(userGroupStats)
@@ -124,7 +123,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyText, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- أمر المتفاعلين (توب 20) ---
+        // أمر المتفاعلين (توب 20)
         if (text === 'المتفاعلين' || text === 'قائمة المتفاعلين') {
             const userGroupStats = db.stats[chatId];
             if (!userGroupStats || Object.keys(userGroupStats).length === 0) {
@@ -145,7 +144,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- أوامر الرفع (محفوظة بشكل دائم) ---
+        // أوامر الرفع (محفوظة بشكل دائم)
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -198,7 +197,7 @@ bot.on('message', async (ctx) => {
 
                 if (!db.roles[chatId]) db.roles[chatId] = {};
                 db.roles[chatId][targetId] = requestedRank;
-                saveData(); // حفظ الرتبة فوراً بشكل دائم
+                saveData();
                 
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم رفعه ${displayRank}`, { reply_to_message_id: ctx.message.message_id });
             }
