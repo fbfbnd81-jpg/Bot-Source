@@ -50,25 +50,27 @@ bot.start((ctx) => {
             senderName: ctx.from.first_name || 'صديق'
         };
 
-        return ctx.reply(`✍️ أهلاً بك يا ${ctx.from.first_name}!\n\n• أرسل الآن نص الهمسة الموجهة إلى [ ${targetName} ] في رسالة هنا (مباشرة بدون كتابة كلمة اهمس)، وسيتم نشرها في الجروب سراً.`);
+        return ctx.reply(`✍️ أهلاً بك يا ${ctx.from.first_name}!\n\n• أرسل الآن نص الهمسة الموجهة إلى [ ${targetName} ] في رسالة هنا، وسيتم نشرها في الجروب سراً.`);
     }
 
     const userName = ctx.from.first_name || 'صديقي';
     ctx.reply(
-        `اهلا بك يا قلبي 🫶 ــ ${userName}\n\n• انا اشغل لك اللي تبي بالمكالمة`,
+        `اهلا بك يا قلبي 🫶 ــ ${userName}\n\n• انا بوت تورايف أشغل لك اللي تبي بالمكالمة`,
         Markup.inlineKeyboard([
             [Markup.button.url('➕ أضفني في مجموعتك', `https://t.me/${botUsername}?startgroup=true`)],
-            [Markup.button.url('👤 المطور', 'https://t.me/j4xa7')]
+            [Markup.button.url('👤 المطورين (ايفي وتوري)', 'https://t.me/j4xa7')]
         ])
     );
 });
 
 bot.on('message', async (ctx, next) => {
     try {
-        if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id] && ctx.message.text) {
+        if (!ctx.message || !ctx.message.text) return next();
+        const text = ctx.message.text.trim();
+
+        if (ctx.chat.type === 'private' && whisperSessions[ctx.from.id]) {
             const data = whisperSessions[ctx.from.id];
-            const whisperText = ctx.message.text;
-            
+            const whisperText = text;
             delete whisperSessions[ctx.from.id];
 
             const viewId = `vw_${Date.now()}_${Math.random()}`;
@@ -101,17 +103,18 @@ bot.on('message', async (ctx, next) => {
                 return;
             }
 
-            // 🛡️ حماية متكاملة ونظيفة للقروبات (حذف الروابط للعامة واستثناء المطورين)
-            if (ctx.message && ctx.message.text) {
-                const text = ctx.message.text;
-                const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
-                
-                if (hasLink && role !== 'Dev🎖️') {
-                    try {
-                        await ctx.deleteMessage();
-                        return;
-                    } catch (e) {}
-                }
+            // حماية الروابط
+            const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
+            if (hasLink && role !== 'Dev🎖️') {
+                try {
+                    await ctx.deleteMessage();
+                    return;
+                } catch (e) {}
+            }
+
+            // 🤍 الرد على أسماء المطورين (ايفي، توري) أو اسم البوت (تورايف)
+            if (/تورايف|ايفي|توري|evy|toraif|tory/i.test(text)) {
+                return ctx.reply('• عيون المطورين (ايفي وتوري) والبوت تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
             }
 
             if (!userStats[chatId]) userStats[chatId] = {};
@@ -125,7 +128,7 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
-bot.hears(/^(?:اهمس|همسه)$/, (ctx) => {
+bot.hears(/^(?:اهمس|همسه)$/i, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
     }
@@ -198,7 +201,7 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Bot is running successfully with protection!');
+    console.log('Toraif Bot is running successfully with Evy & Tory!');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
