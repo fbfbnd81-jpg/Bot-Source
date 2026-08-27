@@ -281,7 +281,7 @@ bot.on('message', async (ctx) => {
     } catch (e) {}
 });
 
-bot.on('edited_message', async (ctx) => {
+bot.on('edited_message async (ctx) => {
     try {
         const editedMsg = ctx.editedMessage;
         if (!editedMsg || !editedMsg.chat || editedMsg.chat.type === 'private') return;
