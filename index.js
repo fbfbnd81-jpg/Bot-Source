@@ -20,7 +20,7 @@ function getUserRole(chatId, userId, username) {
     }
     const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
     if (username && devOnes.includes(username.toLowerCase())) {
-        return 'Dev 1';
+        return 'Dev🎖️';
     }
     return 'عضو';
 }
@@ -33,7 +33,7 @@ const roleHierarchy = {
     'myth': 4,
     'Myth🎖️': 5,
     'Dev 2': 6,
-    'Dev 1': 7
+    'Dev🎖️': 7
 };
 
 function hasPermission(userRole, requiredRole) {
@@ -51,7 +51,7 @@ bot.on('message', async (ctx) => {
         const role = getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
 
-        if (role !== 'Dev 1' && role !== 'Dev 2' && role !== 'Myth🎖️') {
+        if (role !== 'Dev🎖️' && role !== 'Dev 2' && role !== 'Myth🎖️') {
             if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
                 try { await ctx.deleteMessage(); } catch (e) {}
                 return;
@@ -75,7 +75,7 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // أمر رتبتي بدون آي دي
+        // أمر رتبتي بدون أي آي دي نهائياً
         if (text === 'رتبتي' || text === '/رتبتي') {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
@@ -130,8 +130,8 @@ bot.on('message', async (ctx) => {
                     requestedRank = 'Dev 2';
                     displayRank = 'Dev 2';
                 } else if (rawRank === 'مطور اساسي' || rawRank === 'مطور أساسي') {
-                    requestedRank = 'Dev 1';
-                    displayRank = 'Dev 1';
+                    requestedRank = 'Dev🎖️';
+                    displayRank = 'Dev🎖️';
                 } else if (rawRank === 'ميث' || rawRank === 'm') {
                     requestedRank = 'myth';
                     displayRank = 'myth';
@@ -151,7 +151,7 @@ bot.on('message', async (ctx) => {
                     return ctx.reply('عذراً، هذه الرتبة غير صحيحة أو غير متوفرة.', { reply_to_message_id: ctx.message.message_id });
                 }
 
-                if (role === 'مالك اساسي' && (requestedRank === 'myth' || requestedRank === 'Myth🎖️' || requestedRank === 'Dev 2' || requestedRank === 'Dev 1')) {
+                if (role === 'مالك اساسي' && (requestedRank === 'myth' || requestedRank === 'Myth🎖️' || requestedRank === 'Dev 2' || requestedRank === 'Dev🎖️')) {
                     return ctx.reply('عذراً، لا يمكنك رفع شخص لهذه الرتبة العالية.', { reply_to_message_id: ctx.message.message_id });
                 }
                 if (!hasPermission(role, 'مالك اساسي')) {
@@ -161,7 +161,6 @@ bot.on('message', async (ctx) => {
                 if (!userRoles[chatId]) userRoles[chatId] = {};
                 userRoles[chatId][targetId] = requestedRank;
                 
-                // بدون سهم في الرد تماماً كما طلبتِ
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم رفعه ${displayRank}`, { reply_to_message_id: ctx.message.message_id });
             }
         }
@@ -266,4 +265,3 @@ bot.on('edited_message', async (ctx) => {
 });
 
 bot.launch();
-
