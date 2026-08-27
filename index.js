@@ -58,12 +58,11 @@ bot.start((ctx) => {
         `اهلا بك يا قلبي 🫶 ــ ${userName}\n\n• انا بوت تورايف أشغل لك اللي تبي بالمكالمة`,
         Markup.inlineKeyboard([
             [Markup.button.url('➕ أضفني في مجموعتك', `https://t.me/${botUsername}?startgroup=true`)],
-            [Markup.button.url('👤 المطورين (ايفي وتوري)', 'https://t.me/j4xa7')]
+            [Markup.button.url('👤 المطورين', 'https://t.me/j4xa7')]
         ])
     );
 });
 
-// معالجة الرسائل العامة (حماية الروابط وإحصائيات التفاعل والهمسات بالخاص)
 bot.on('message', async (ctx, next) => {
     try {
         if (!ctx.message || !ctx.message.text) return next();
@@ -104,13 +103,37 @@ bot.on('message', async (ctx, next) => {
                 return;
             }
 
-            // حماية الروابط للعامة واستثناء المطورين
+            // حماية الروابط
             const hasLink = /https?:\/\/|t\.me\/|www\./i.test(text);
             if (hasLink && role !== 'Dev🎖️') {
                 try {
                     await ctx.deleteMessage();
                     return;
                 } catch (e) {}
+            }
+
+            // 1. إذا كتب توري -> منشن حسابها
+            if (/^توري$/i.test(text)) {
+                return ctx.reply('• توري ⟵ @to6ri', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            // 2. إذا كتب ايفي أو ايلاف -> منشن حساب j4xa7
+            if (/^(ايفي|ايلاف)$/i.test(text)) {
+                return ctx.reply('• المطور ⟵ @j4xa7', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            // 3. إذا كتب تورايف -> ردود منوعة
+            if (/^تورايف$/i.test(text)) {
+                const replies = [
+                    'عيوني 🤍',
+                    'أمر؟ 👀',
+                    'سم 🫶',
+                    'وش بغيت؟ 🦦',
+                    'عيون ايفي وتوري ✨',
+                    'هلا 🤍'
+                ];
+                const randomReply = replies[Math.floor(Math.random() * replies.length)];
+                return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
             }
 
             if (!userStats[chatId]) userStats[chatId] = {};
@@ -124,12 +147,6 @@ bot.on('message', async (ctx, next) => {
     return next();
 });
 
-// 🤍 الرد الفوري على اسم البوت والمطورين (تورايف، ايفي، توري)
-bot.hears(/^(تورايف|ايفي|توري|evy|toraif|tory)$/i, (ctx) => {
-    ctx.reply('• عيون المطورين (ايفي وتوري) والبوت تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
-});
-
-// أمر الهمسة بالرد على الرسالة
 bot.hears(/^(?:اهمس|همسه)$/i, (ctx) => {
     if (!ctx.message.reply_to_message) {
         return ctx.reply('⚠️ يرجى الرد على الشخص المراد أهماسه بكلمة (اهمس).', { reply_to_message_id: ctx.message.message_id });
@@ -203,7 +220,7 @@ bot.hears(/^(?:\/)?رتبتي$/, (ctx) => {
 });
 
 bot.launch().then(() => {
-    console.log('Toraif Bot is running successfully with full commands!');
+    console.log('Toraif Bot is running successfully with all mentions and replies!');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
