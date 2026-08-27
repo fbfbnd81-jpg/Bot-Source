@@ -64,7 +64,7 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // ب) الحماية (المميز، المالك، المالك الأساسي والديفات مستثنين من الحماية مثل الإنجليزي والرسائل الطويلة)
+        // ب) الحماية (المميز، المالك، المالك الأساسي والديفات مستثنين من حماية الإنجليزي والرسائل الطويلة)
         const isProtected = roleHierarchy[role] >= roleHierarchy['مميز'];
         
         if (!isProtected) {
@@ -116,7 +116,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• عدد المكتومين عام: ${globalList.length}`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // هـ) أوامر رفع ورتب الأعضاء (مالك أساسي فأعلى)
+        // هـ) أوامر رفع ورتب الأعضاء (مالك أساسي فأعلى) والتنزيل (إكسترا فأعلى)
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('⚠️ يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -134,7 +134,8 @@ bot.on('message', async (ctx) => {
 
             if (text.startsWith('رفع ')) {
                 const requestedRank = text.replace('رفع ', '').trim();
-                // المالك الأساسي يقدر يرفع الرتب اللي تحته فقط (مميز، مالك، مالك أساسي) ولا يقدر يرفع ميث أو ديف
+                
+                // المالك الأساسي يقدر يرفع الرتب اللي تحته فقط
                 if (role === 'مالك أساسي' && ['ميث', 'إكسترا', 'Dev 2', 'Dev 1'].includes(requestedRank)) {
                     return ctx.reply('❌ عذراً، لا يمكنك رفع شخص لهذه الرتبة العالية.', { reply_to_message_id: ctx.message.message_id });
                 }
@@ -144,7 +145,9 @@ bot.on('message', async (ctx) => {
 
                 if (!userRoles[chatId]) userRoles[chatId] = {};
                 userRoles[chatId][targetId] = requestedRank;
-                return ctx.reply(`• المستخدم ذا ⟵ ｢ ${targetName} ｣\n• تم رفعه ⟵ ｢ ⭐ ${requestedRank} ｣`, { reply_to_message_id: ctx.message.message_id });
+                
+                // الرد تماماً مثل الصورة المطلوبة
+                return ctx.reply(`• المستخدم ذا ⟵ ｢ ${targetName} ｣\n• تم رفعه ${requestedRank}`, { reply_to_message_id: ctx.message.message_id });
             }
         }
 
