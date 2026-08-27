@@ -33,10 +33,12 @@ function saveData() {
 function getUserRole(chatId, userId, username) {
     const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
     if (username && devOnes.includes(username.toLowerCase())) {
-        return 'Dev🎖️';
+        return 'Dev²🎖';
     }
     if (db.roles[chatId] && db.roles[chatId][userId]) {
-        return db.roles[chatId][userId];
+        let storedRole = db.roles[chatId][userId];
+        if (storedRole === 'Dev🎖️') return 'Dev²🎖';
+        return storedRole;
     }
     return 'عضو';
 }
@@ -49,12 +51,14 @@ const roleHierarchy = {
     'myth': 4,
     'Myth🎖️': 5,
     'Dev 2': 6,
-    'Dev🎖️': 7,
+    'Dev²🎖': 7,
     'Dev1_Super': 8
 };
 
 function hasPermission(userRole, requiredRole) {
-    return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
+    let normalizedRole = userRole === 'Dev²🎖' ? 'Dev🎖️' : userRole;
+    let normalizedReq = requiredRole === 'Dev²🎖' ? 'Dev🎖️' : requiredRole;
+    return (roleHierarchy[normalizedRole] || 0) >= (roleHierarchy[normalizedReq] || 0);
 }
 
 bot.on('message', async (ctx) => {
@@ -137,7 +141,7 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
 
             if (!hasPermission(role, 'Dev🎖️')) {
-                return ctx.reply('• أمر الرفع والتنزيل يتطلب رتبة (Dev🎖️) فما فوق.', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('• أمر الرفع والتنزيل يتطلب رتبة (Dev²🎖) فما فوق.', { reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'تنزيل الكل') {
@@ -152,8 +156,8 @@ bot.on('message', async (ctx) => {
                 let requestedRank = '';
                 let displayRank = '';
 
-                if (rawRank === 'ديف' || rawRank === 'ديف 1') { requestedRank = 'Dev🎖️'; displayRank = 'Dev🎖️'; }
-                else if (rawRank === 'مطور اساسي') { requestedRank = 'Dev 2'; displayRank = 'Dev 2'; }
+                if (rawRank === 'ديف') { requestedRank = 'Dev 2'; displayRank = 'Dev 2'; }
+                else if (rawRank === 'مطور اساسي' || rawRank === 'ديف 1' || rawRank === 'ديف١') { requestedRank = 'Dev🎖️'; displayRank = 'Dev²🎖'; }
                 else if (rawRank === 'ميث') { requestedRank = 'myth'; displayRank = 'myth'; }
                 else if (rawRank === 'اكس' || rawRank === 'اكسترا') { requestedRank = 'Myth🎖️'; displayRank = 'Myth🎖️'; }
                 else if (rawRank === 'مميز') { requestedRank = 'مميز'; displayRank = 'مميز'; }
