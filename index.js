@@ -49,6 +49,7 @@ bot.on('message', async (ctx) => {
         const userId = ctx.from.id;
         const username = ctx.from.username || '';
         const role = getUserRole(chatId, userId, username);
+        const name = ctx.from.first_name || 'المستخدم';
         const text = (ctx.message.text || ctx.message.caption || '').trim();
 
         if (role !== 'Dev🎖️' && role !== 'Dev 2' && role !== 'Myth🎖️') {
@@ -75,21 +76,24 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // أمر رتبتي بدون أي آي دي نهائياً
         if (text === 'رتبتي' || text === '/رتبتي') {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'فتح المخالفات') {
-            if (!hasPermission(role, 'Dev 2')) return ctx.reply('• هذا الأمر يخص الديفات والإدارة العليا فقط.', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Dev🎖️')) {
+                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            }
             antiSpamEnabled[chatId] = false;
-            return ctx.reply('تم فتح المخالفات بنجاح.', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`من (${name})\nتم فتح المخالفات بنجاح 🔓`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'قفل المخالفات') {
-            if (!hasPermission(role, 'Dev 2')) return ctx.reply('• هذا الأمر يخص الديفات والإدارة العليا فقط.', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Dev🎖️')) {
+                return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
+            }
             antiSpamEnabled[chatId] = true;
-            return ctx.reply('تم قفل المخالفات وحماية الجروب بنجاح.', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`من (${name})\nتم تقفيل المخالفات بنجاح 🔒`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'مم') {
@@ -265,3 +269,4 @@ bot.on('edited_message', async (ctx) => {
 });
 
 bot.launch();
+
