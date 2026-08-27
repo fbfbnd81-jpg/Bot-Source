@@ -1,21 +1,10 @@
 const { Telegraf } = require('telegraf');
-const http = require('http');
-
-// هذا السيرفر ياخذ البورت من ريلواي بشكل صحيح ومضمون
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end(Botf is running!');
-});
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
-});
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// رد بسيط للتأكد
 bot.start((ctx) => {
-    return ctx.reply('أهلاً بك يا قلبي! البوت يعمل بنجاح.');
+    return ctx.reply('أهلاً بك! البوت يعمل بنجاح.');
 });
 
 bot.on('message', async (ctx) => {
@@ -35,8 +24,9 @@ bot.on('message', async (ctx) => {
     }
 });
 
+// تشغيل البوت مباشرة بدون سيرفرات معقدة
 bot.launch().then(() => {
-    console.log('Bot is listening to messages successfully!');
+    console.log('Bot is running perfectly!');
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
