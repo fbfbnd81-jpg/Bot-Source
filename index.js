@@ -1,7 +1,6 @@
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
-const ytsr = require('ytsr');
 
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -13,7 +12,7 @@ const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
 const groupSettings = {}; 
-const whispers = {}; // تخزين الهمسات المؤقتة
+const whispers = {}; 
 
 const DATA_FILE = './toraif_github_database.json';
 let db = { roles: {}, stats: {} };
@@ -58,7 +57,7 @@ function hasPermission(userRole, requiredRole) {
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
 }
 
-bot.on('message', async (ctx) => {
+bot.on('message', async (ctx, next) => {
     try {
         if (!ctx.chat) return;
         
@@ -73,8 +72,20 @@ bot.on('message', async (ctx) => {
         const mention = `[${name}](tg://user?id=${userId})`;
         const isTheDevOne = (username.toLowerCase() === 'j4xa7');
 
-        // التعامل مع الرسائل الخاصة (الهمسات)
+        // استقبال الهمسة في الخاص
         if (ctx.chat.type === 'private') {
+            if (text.startsWith('/start whisper_')) {
+                const parts = text.replace('/start whisper_', '').split('_');
+                const targetChatId = parts[0];
+                const targetId = parts[1];
+                const targetName = decodeURIComponent(parts[2] || 'المستخدم');
+
+                if (!global.waitingForWhisper) global.waitingForWhisper = {};
+                global.waitingForWhisper[userId] = { targetChatId, targetId, targetName };
+
+                return ctx.reply(`• تم تحديد الهمسه لـ ↦ ${targetName}\n• اكتب الهمسة الآن في الخاص (مثال: احبك):`);
+            }
+
             if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
                 const targetData = global.waitingForWhisper[userId];
                 delete global.waitingForWhisper[userId];
@@ -88,9 +99,8 @@ bot.on('message', async (ctx) => {
                     text: text
                 };
 
-                // إرسال الهمسة للقروب بالشكل المطلوب
                 const whisperMsgText = `• تم تحديد الهمسه ↦ [${targetData.targetName}](tg://user?id=${targetData.targetId})\n• اضغط الزر لكتابة الهمسة`;
-                await bot.telegram.sendMessage(targetData.chatId, whisperMsgText, {
+                await bot.telegram.sendMessage(targetData.targetChatId, whisperMsgText, {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [[
@@ -102,7 +112,7 @@ bot.on('message', async (ctx) => {
 
                 return ctx.reply('• تم إرسال الهمسه بنجاح ✓');
             }
-            return;
+            return next();
         }
 
         if (text === 'احبك' || text === 'أحبك') {
@@ -115,9 +125,7 @@ bot.on('message', async (ctx) => {
             const isGloballyMuted = globalMutedUsers[userId];
 
             if (isMutedInGroup || isGloballyMuted) {
-                try {
-                    await ctx.deleteMessage();
-                } catch (e) {}
+                try { await ctx.deleteMessage(); } catch (e) {}
                 return; 
             }
         }
@@ -133,35 +141,28 @@ bot.on('message', async (ctx) => {
             saveData();
         }
 
-        // نظام بحث الأغاني (يوت / بحث)
+        // بحث الأغاني (يوت / بحث)
         if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
             const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
             if (!query) return ctx.reply('يرجى كتابة اسم الأغنية بعد الأمر.', { reply_to_message_id: ctx.message.message_id });
 
-            try {
-                const searchResults = await ytsr(query, { limit: 1 });
-                if (!searchResults || searchResults.items.length === 0) {
-                    return ctx.reply('لم يتم العثور على نتائج مطابقة.', { reply_to_message_id: ctx.message.message_id });
-                }
-                const video = searchResults.items[0];
-                const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
+            const encodedQuery = encodeURIComponent(query);
+            const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodedQuery}`;
+            const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
 
-                const musicReplyText = `[${video.title}](${video.url})\nانوفي 16 شراري\n\n• @${botUsername} 🎵`;
-                return ctx.reply(musicReplyText, {
-                    parse_mode: 'Markdown',
-                    reply_to_message_id: ctx.message.message_id,
-                    reply_markup: {
-                        inline_keyboard: [[
-                            { text: '▶ تشغيل', url: video.url }
-                        ]]
-                    }
-                });
-            } catch (err) {
-                return ctx.reply('حدث خطأ أثناء البحث عن الأغنية.', { reply_to_message_id: ctx.message.message_id });
-            }
+            const musicReplyText = `[${query}](https://www.youtube.com/results?search_query=${encodedQuery})\nانوفي 16 شراري\n\n• @${botUsername} 🎵`;
+            return ctx.reply(musicReplyText, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: ctx.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '▶ تشغيل', url: ytSearchUrl }
+                    ]]
+                }
+            });
         }
 
-        // نظام الهمسة (همسه / اهمس / ه) بالرد على الشخص
+        // نظام الهمسة (همسه / اهمس / ه)
         if (['همسه', 'اهمس', 'ه'].includes(text)) {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص الذي تريد أهمسته.', { reply_to_message_id: ctx.message.message_id });
@@ -169,7 +170,6 @@ bot.on('message', async (ctx) => {
             const targetUser = ctx.message.reply_to_message.from;
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
-
             const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
             const replyText = `• تم تحديد الهمسه ↦ [${targetName}](tg://user?id=${targetId})\n• اضغط الزر لكتابة الهمسة`;
 
@@ -178,13 +178,12 @@ bot.on('message', async (ctx) => {
                 reply_to_message_id: ctx.message.message_id,
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: 'اهمس هنا ↗', url: `https://t.me/${botUsername}?start=whisper_${chatId}_${targetId}_${targetName}` }
+                        { text: 'اهمس هنا ↗', url: `https://t.me/${botUsername}?start=whisper_${chatId}_${targetId}_${encodeURIComponent(targetName)}` }
                     ]]
                 }
             });
         }
 
-        // أمر تفاعلي
         if (text === 'تفاعلي') {
             if (ctx.chat.type === 'private') return;
             const chatStats = db.stats[chatId] || {};
@@ -212,7 +211,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر المتفاعلين
         if (text === 'المتفاعلين') {
             if (ctx.chat.type === 'private') return;
             const chatStats = db.stats[chatId] || {};
@@ -432,7 +430,7 @@ bot.on('message', async (ctx) => {
     } catch (e) {}
 });
 
-// التعامل مع الضغط على أزرار الهمسات وعملية /start الخاصة بالهمسة
+// التعامل مع أزرار الهمسات
 bot.on('callback_query', async (ctx) => {
     try {
         const data = ctx.callbackQuery.data;
@@ -469,22 +467,6 @@ bot.on('callback_query', async (ctx) => {
             return ctx.reply(`لرد الهمسة، اضغط على الرابط للذهاب لخاص البوت:\nhttps://t.me/${botUsername}`);
         }
     } catch (e) {}
-});
-
-bot.on('message', async (ctx, next) => {
-    if (ctx.chat && ctx.chat.type === 'private' && ctx.message.text && ctx.message.text.startsWith('/start whisper_')) {
-        const parts = ctx.message.text.replace('/start whisper_', '').split('_');
-        const chatId = parts[0];
-        const targetId = parts[1];
-        const targetName = decodeURIComponent(parts[2] || 'المستخدم');
-        const userId = ctx.from.id;
-
-        if (!global.waitingForWhisper) global.waitingForWhisper = {};
-        global.waitingForWhisper[userId] = { chatId, targetId, targetName };
-
-        return ctx.reply(`• تم تحديد الهمسه لـ ↦ ${targetName}\n• اكتب الهمسة الآن في الخاص (مثال: احبك):`);
-    }
-    return next();
 });
 
 bot.launch();
