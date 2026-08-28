@@ -1,3 +1,4 @@
+تفضل، هذا هو الكود الكامل لملف index.js محدثاً وجاهزاً بالكامل وبالتنسيق الذي طلبته (اسم الأغنية، المدة، منشن البوت، وتشغيل مقطع صوتي مباشرة داخل المحادثة):
 const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
@@ -168,7 +169,6 @@ bot.on('message', async (ctx, next) => {
             saveData();
         }
 
-        // تم تحديث جلب الأغاني ليكون العنوان كامل، مع المدة، ويوزر بوتك، وتشغيل مباشر داخل الشات
         if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
             const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
             if (!query) return ctx.reply('يرجى كتابة اسم الأغنية بعد الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -186,22 +186,18 @@ bot.on('message', async (ctx, next) => {
                     const artistName = track.artistName;
                     const durationMs = track.trackTimeMillis || 180000;
                     
-                    // حساب المدة بالدقائق والثواني
                     const minutes = Math.floor(durationMs / 60000);
                     const seconds = ((durationMs % 60000) / 1000).toFixed(0);
                     const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 
                     const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
-                    const fullSongTitle = `${trackName} - ${artistName} (Official Audio)`;
+                    const fullSongTitle = `${trackName} - ${artistName}`;
 
                     try { await ctx.deleteMessage(searchingMsg.message_id); } catch (e) {}
 
                     if (audioUrl) {
-                        return ctx.replyWithAudio(audioUrl, {
-                            title: trackName,
-                            performer: artistName,
-                            duration: Math.floor(durationMs / 1000),
-                            caption: `[${fullSongTitle}](https://t.me/${botUsername})\n⏱️ المده: ${durationFormatted}\n• @${botUsername}`,
+                        return ctx.replyWithVoice(audioUrl, {
+                            caption: `${fullSongTitle}\n⏱️ المده: ${durationFormatted}\n• @${botUsername}`,
                             parse_mode: 'Markdown',
                             reply_to_message_id: ctx.message.message_id
                         });
@@ -717,3 +713,5 @@ bot.on('callback_query', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+
