@@ -7,8 +7,7 @@ http.createServer((req, res) => {
     res.end('Toraif Bot is active!');
 }).listen(process.env.PORT || 3000);
 
-// حطي التوكن الجديد هنا
-const bot = new Telegraf('حطي_التوكن_الجديد_هنا');
+const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
