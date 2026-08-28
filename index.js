@@ -63,16 +63,40 @@ function hasPermission(userRole, requiredRole) {
 
 bot.on('message', async (ctx) => {
     try {
-        if (!ctx.chat || ctx.chat.type === 'private') return;
-        if (!ctx.from || ctx.from.is_bot) return;
-
+        if (!ctx.chat) return;
+        
+        // يدعم القروبات والقنوات (إذا كانت القناة تدعم الرسائل أو التعليقات)
+        const isChannel = ctx.chat.type === 'channel';
         const chatId = ctx.chat.id;
-        const userId = ctx.from.id;
-        const username = ctx.from.username || '';
-        const name = ctx.from.first_name || 'المستخدم';
-        const role = getUserRole(chatId, userId, username);
+        const userId = ctx.from ? ctx.from.id : chatId;
+        const username = ctx.from && ctx.from.username ? ctx.from.username : '';
+        const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
+        const role = isChannel ? 'Dev²🎖' : getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isEdited = !!ctx.update.edited_message;
+
+        // الرد على كلمة "احبك" بشكل منوع
+        if (text === 'احبك') {
+            const loveReplies = [
+                'وانا احب ايفي',
+                'وانا احب توري',
+                'وانا بعد',
+                'اعشقك'
+            ];
+            const randomReply = loveReplies[Math.floor(Math.random() * loveReplies.length)];
+            return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (isChannel) {
+            // أوامر خاصة بالقناة لو حابة تفاعلات أو ردود سريعة
+            if (text === 'تورايف') {
+                return ctx.reply('عيون ايفي وتوري في القناة ❤️');
+            }
+            return;
+        }
+
+        if (ctx.chat.type === 'private') return;
+        if (ctx.from && ctx.from.is_bot) return;
 
         if (!groupSettings[chatId]) {
             groupSettings[chatId] = { violations: true, edit: true };
