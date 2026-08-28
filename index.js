@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = require('http');
+const http = http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -85,7 +85,7 @@ bot.on('message', async (ctx) => {
                 try {
                     await ctx.deleteMessage();
                 } catch (e) {}
-                return; // إيقاف تنفيذ أي شي ثاني للرسايل المكتومة
+                return; 
             }
         }
 
@@ -155,19 +155,6 @@ bot.on('message', async (ctx) => {
                 try { await ctx.deleteMessage(); } catch (e) {}
                 return ctx.reply(`عذراً ${mention} ‼️ : يمنع تعديل الرسايل بالمجموعة`, { parse_mode: 'Markdown' });
             }
-
-            if (!groupSettings[chatId].violations) {
-                const now = Date.now();
-                if (!userMessageTimestamps[userId]) userMessageTimestamps[userId] = [];
-                userMessageTimestamps[userId] = userMessageTimestamps[userId].filter(timestamp => now - timestamp < 4000);
-                userMessageTimestamps[userId].push(now);
-
-                if (userMessageTimestamps[userId].length > 4) {
-                    try { await ctx.deleteMessage(); } catch (e) {}
-                    userMessageTimestamps[userId] = [];
-                    return ctx.reply(`تم حذف رسالة ${mention} بسبب الإزعاج أو التكرار (سبام) ‼️`, { parse_mode: 'Markdown' });
-                }
-            }
         }
 
         if (!db.stats[chatId]) db.stats[chatId] = {};
@@ -189,7 +176,10 @@ bot.on('message', async (ctx) => {
             const targetUser = ctx.message.reply_to_message.from;
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
+            const targetUsername = targetUser.username || '';
+            const targetRole = getUserRole(chatId, targetId, targetUsername);
 
+            // فحص صلاحيات الأوامر الأساسية
             if (text === 'كتم' && !hasPermission(role, 'myth')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
             }
@@ -203,10 +193,17 @@ bot.on('message', async (ctx) => {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
 
+            // منع تنفيذ أمر الكتم أو الحظر على شخص رتبته أعلى أو مساوية لرتبتك
+            if (['كتم', 'كتم عام', 'تقييد'].includes(text)) {
+                if ((roleHierarchy[role] || 0) <= (roleHierarchy[targetRole] || 0)) {
+                    return ctx.reply(`• ماقدر تستخدم الامر على ↤ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
+                }
+            }
+
             if (text === 'كتم') {
                 if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
                 mutedUsers[chatId][targetId] = true;
-                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم كتمه .`, { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• المستخدم ذا ↤ ｢ ${targetName} ｣\n• كتمته .`, { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'فك الكتم') {
                 if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
@@ -214,7 +211,7 @@ bot.on('message', async (ctx) => {
             }
             if (text === 'كتم عام') {
                 globalMutedUsers[targetId] = true;
-                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم كتمه عام .`, { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• المستخدم ذا ↤ ｢ ${targetName} ｣\n• حظرته عام`, { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'فك الكتم العام') {
                 delete globalMutedUsers[targetId];
@@ -241,7 +238,7 @@ bot.on('message', async (ctx) => {
                 else if (rawRank === 'اكس' || rawRank === 'اكسترا') { requestedRank = 'Myth🎖️'; }
                 else if (rawRank === 'ميث') { requestedRank = 'myth'; }
                 else if (rawRank === 'مالك اساسي') { requestedRank = 'مالك اساسي'; }
-                else if (rawRank === 'مالك') { requestedRank = 'مالك'; }
+                else if (rawRank === 'مالك') { requestedRank, requestedRank = 'مالك'; }
                 else if (rawRank === 'مميز') { requestedRank = 'مميز'; }
                 else { return ctx.reply('عذراً، هذه الرتبة غير صحيحة.', { reply_to_message_id: ctx.message.message_id }); }
 
@@ -259,7 +256,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
-    } catch (e) {}
+    }चार्य (e) {}
 });
 
 bot.launch();
