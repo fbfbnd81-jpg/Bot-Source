@@ -44,13 +44,14 @@ function getUserRole(chatId, userId, username) {
 const roleHierarchy = {
     'عضو': 0,
     'مميز': 1,
-    'مالك': 2,
-    'مالك اساسي': 3,
-    'myth': 4,
-    'Myth🎖️': 5,      
-    'Dev²🎖': 6,
-    'Dev🎖️': 7,
-    'Dev1_Super': 8
+    'مشرف': 2,
+    'مالك': 3,
+    'مالك اساسي': 4,
+    'myth': 5,
+    'Myth🎖️': 6,      
+    'Dev²🎖': 7,
+    'Dev🎖️': 8,
+    'Dev1_Super': 9
 };
 
 function hasPermission(userRole, requiredRole) {
@@ -111,7 +112,6 @@ bot.on('message', async (ctx, next) => {
                     content: contentData
                 };
 
-                // التصميم الجديد للهمسة تماماً مثل الفيديو
                 const whisperMsgText = `ـ\n` +
                                        `• يا حلوه ↰ [${targetData.targetName}](tg://user?id=${targetData.targetId})\n` +
                                        `• وصلتك همسة سرية من ↰ ${name}\n` +
@@ -222,6 +222,8 @@ bot.on('message', async (ctx, next) => {
                 roleDisplay = '🎖️ Myth';
             } else if (role.includes('Dev') || role === 'Dev²🎖' || role === 'Dev🎖️') {
                 roleDisplay = '🎖️ Dev';
+            } else if (role === 'مشرف') {
+                roleDisplay = 'مشرف';
             } else if (role === 'مميز') {
                 roleDisplay = 'مميز';
             } else if (role === 'مالك' || role === 'مالك اساسي') {
@@ -363,7 +365,7 @@ bot.on('message', async (ctx, next) => {
             return ctx.reply(`• رتبتك هي ↦ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام'].includes(text) || text.startsWith('رفع ') || text === 'تنزيل الكل') {
+        if (['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'تنزيل مشرف'].includes(text) || text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
             }
@@ -374,22 +376,64 @@ bot.on('message', async (ctx, next) => {
             const targetRole = getUserRole(chatId, targetId, targetUsername);
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
-            if (text === 'كتم' && !hasPermission(role, 'myth')) {
-                return ctx.reply('• هذا الامر يخص ↦ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
+            // صلاحيات الأوامر
+            if (['كتم', 'فك الكتم', 'تقييد', 'فك التقييد', 'رفع مشرف', 'تنزيل مشرف'].includes(text) && !hasPermission(role, 'مشرف')) {
+                return ctx.reply('• هذا الامر يخص ↦ ｢ مشرف ｣ فما فوق', { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'كتم عام' && !hasPermission(role, 'Myth🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↦ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
-            }
-            if ((text === 'تقييد' || text === 'فك التقييد' || text === 'الغاء التقييد' || text === 'رفع القيود') && !hasPermission(role, 'Dev²🎖')) {
-                return ctx.reply('• هذا الامر يخص ↦ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
             if ((text.startsWith('رفع ') || text === 'تنزيل الكل') && !hasPermission(role, 'Myth🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↦ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
 
-            if (['كتم', 'كتم عام', 'تقييد'].includes(text)) {
-                if ((roleHierarchy[role] || 0) <= (roleHierarchy[targetRole] || 0)) {
-                    return ctx.reply(`• ماقدر تستخدم الامر على ↦ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
+            if (text === 'رفع مشرف') {
+                try {
+                    // إعطاء صلاحيات الأدمن الفعلية في تليجرام
+                    await ctx.promoteChatMember(targetId, {
+                        is_anonymous: false,
+                        can_manage_chat: true,
+                        can_delete_messages: true,
+                        can_manage_video_chats: true,
+                        can_restrict_members: true,
+                        can_promote_members: false,
+                        can_change_info: false,
+                        can_invite_users: true,
+                        can_pin_messages: true
+                    });
+
+                    if (!db.roles[chatId]) db.roles[chatId] = {};
+                    db.roles[chatId][targetId] = 'مشرف';
+                    saveData();
+
+                    return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه مشرف رسمي بالقروب وبصلاحيات كاملة ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                } catch (err) {
+                    return ctx.reply('عذراً، تأكد من أن البوت مشرف ولديه صلاحية "إضافة مشرفين جدد".', { reply_to_message_id: ctx.message.message_id });
+                }
+            }
+
+            if (text === 'تنزيل مشرف') {
+                try {
+                    // سحب صلاحيات الأدمن من تليجرام
+                    await ctx.promoteChatMember(targetId, {
+                        is_anonymous: false,
+                        can_manage_chat: false,
+                        can_delete_messages: false,
+                        can_manage_video_chats: false,
+                        can_restrict_members: false,
+                        can_promote_members: false,
+                        can_change_info: false,
+                        can_invite_users: false,
+                        can_pin_messages: false
+                    });
+
+                    if (!db.roles[chatId]) db.roles[chatId] = {};
+                    db.roles[chatId][targetId] = 'عضو';
+                    saveData();
+
+                    return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم سحب الإشراف عنه وإرجاعه عضو ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                } catch (err) {
+                    return ctx.reply('فشل في إزالة الإشراف، تأكد من صلاحيات البوت.', { reply_to_message_id: ctx.message.message_id });
                 }
             }
 
@@ -429,7 +473,8 @@ bot.on('message', async (ctx, next) => {
                 const rawRank = text.replace('رفع ', '').trim().toLowerCase();
                 let requestedRank = '';
 
-                if (rawRank === 'ديف') { requestedRank = 'Dev²🎖'; }
+                if (rawRank === 'مشرف') { requestedRank = 'مشرف'; }
+                else if (rawRank === 'ديف') { requestedRank = 'Dev²🎖'; }
                 else if (rawRank === 'مطور اساسي' || rawRank === 'ديف 1' || rawRank === 'ديف١') { requestedRank = 'Dev🎖️'; }
                 else if (rawRank === 'اكس' || rawRank === 'اكسترا') { requestedRank = 'Myth🎖️'; }
                 else if (rawRank === 'ميث') { requestedRank = 'myth'; }
@@ -486,20 +531,8 @@ bot.on('callback_query', async (ctx) => {
             }
         }
 
-        if (data.startsWith('reply_whisper_')) {
-            const whisperId = data.replace('reply_whisper_', '');
-            const whisper = whispers[whisperId];
-            if (!whisper) {
-                return ctx.answerCbQuery('انتهت صلاحية الهمسة.', { show_alert: true });
-            }
-            const currentUserId = ctx.from.id;
-            if (currentUserId !== whisper.toId) {
-                return ctx.answerCbQuery('هذا الزر مخصص للشخص المرسل إليه الهمسة فقط.', { show_alert: true });
-            }
-
-            const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
-            await ctx.answerCbQuery();
-            return ctx.reply(`للرد على الهمسة، اضغط على الرابط للذهاب لخاص البوت:\nhttps://t.me/${botUsername}`);
+        if (data.startsWith('reply_whis_')) {
+            // ...
         }
     } catch (e) {}
 });
