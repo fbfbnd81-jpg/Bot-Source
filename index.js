@@ -89,14 +89,65 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // تسجيل أي عضو يرسل رسالة تلقائياً عشان يضبط معه منشن @all
+        // تسجيل أي عضو يرسل رسالة تلقائياً لتتبع التفاعل
         if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             if (!db.stats[chatId]) db.stats[chatId] = {};
-            db.stats[chatId][userId] = { count: (db.stats[chatId][userId]?.count || 0) + 1, name: name, username: username };
+            if (!db.stats[chatId][userId]) {
+                db.stats[chatId][userId] = { count: 0, name: name, username: username };
+            }
+            db.stats[chatId][userId].count += 1;
+            db.stats[chatId][userId].name = name;
+            db.stats[chatId][userId].username = username;
             saveData();
         }
 
-        // أوامر قفل وفتح المنشن (للـ Dev ون فقط) مع شكل "بواسطة"
+        // أمر تفاعلي
+        if (text === 'تفاعلي') {
+            if (ctx.chat.type === 'private') return;
+            const chatStats = db.stats[chatId] || {};
+            // ترتيب الأعضاء تنازلياً حسب عدد الرسايل لمعرفة الترتيب
+            const sortedUsers = Object.entries(chatStats).sort((a, b) => b[1].count - a[1].count);
+            const userIndex = sortedUsers.findIndex(([id]) => id == userId);
+            const rankNumber = userIndex !== -1 ? userIndex + 1 : 'خارج القائمة';
+            const msgCount = chatStats[userId] ? chatStats[userId].count : 0;
+
+            let roleBadge = '🎖️ عضو';
+            if (role === 'myth' || role === 'Myth🎖️') roleBadge = '🎖️ Myth';
+            else if (role.includes('Dev')) roleBadge = '🎖️ Dev';
+            else if (role === 'مميز') roleBadge = '⭐ مميز';
+            else if (role === 'مالك' || role === 'مالك اساسي') roleBadge = '👑 مالك';
+
+            const replyText = `• رتبتك هي ⟵ ${roleBadge}\n\n` +
+                              `• رسايلك بالتفاعل ⟵ ${msgCount}\n` +
+                              `• ترتيبك بالممتفاعلين ⟵ ${rankNumber}\n-`;
+            return ctx.reply(replyText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أمر المتفاعلين (توب 20)
+        if (text === 'المتفاعلين') {
+            if (ctx.chat.type === 'private') return;
+            const chatStats = db.stats[chatId] || {};
+            const sortedUsers = Object.entries(chatStats).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
+
+            if (sortedUsers.length === 0) {
+                return ctx.reply('لا يوجد أعضاء مسجلين بالتفاعل بعد.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            let topText = 'توب اكثر 20 متفاعلين بالقروب :\n______________________\n\n';
+            sortedUsers.forEach(([id, data], index) => {
+                let prefix = `${index + 1} )`;
+                if (index === 0) prefix = `🥇 )`;
+                else if (index === 1) prefix = `🥈 )`;
+                else if (index === 2) prefix = `🥉 )`;
+
+                const mName = data.name || 'عضو';
+                topText += `${prefix} ${data.count} | [${mName}](tg://user?id=${id})\n`;
+            });
+
+            return ctx.reply(topText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أوامر قفل وفتح المنشن
         if (text === 'قفل المنشن' || text === 'فتح المنشن') {
             if (!isTheDevOne) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -105,14 +156,14 @@ bot.on('message', async (ctx) => {
             
             if (text === 'قفل المنشن') {
                 groupSettings[chatId].mentionAll = false;
-                return ctx.reply(`• بواسطة ↤ ${mention}\n• تم قفل المنشن .`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• بواسطة ⟵ ${mention}\n• تم قفل المنشن .`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             } else {
                 groupSettings[chatId].mentionAll = true;
-                return ctx.reply(`• بواسطة ↤ ${mention}\n• تم فتح المنشن .`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• بواسطة ⟵ ${mention}\n• تم فتح المنشن .`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
         }
 
-        // أمر @all لتاغ كل الأعضاء المسجلين بالقروب
+        // أمر @all لتاغ كل الأعضاء المسجلين بالتفاعل
         if (text === '@all') {
             if (!groupSettings[chatId]) groupSettings[chatId] = { violations: true, edit: true, mentionAll: true };
             if (groupSettings[chatId].mentionAll === false && !isTheDevOne) {
@@ -120,7 +171,7 @@ bot.on('message', async (ctx) => {
             }
             
             if (!db.stats[chatId] || Object.keys(db.stats[chatId]).length === 0) {
-                return ctx.reply('لا يوجد أعضاء مسجلين بالقروب بعد (خلي الأعضاء يرسلون رسالة وحدة عشان يسجلهم البوت).', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('لا يوجد أعضاء مسجلين بالقروب بعد.', { reply_to_message_id: ctx.message.message_id });
             }
 
             let mentionText = '• تنبيه للجميع 📢:\n';
