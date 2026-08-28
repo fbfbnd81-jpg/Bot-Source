@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = http = require('http');
+const http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -57,12 +57,11 @@ function hasPermission(userRole, requiredRole) {
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
 }
 
-// استقبال زر اهمس هنا في الخاص
 bot.start(async (ctx) => {
     try {
         const userId = ctx.from.id;
         if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
-            return ctx.reply('• أرسل الآن الهمسة\n• يمكنك إرسال نص أو ملصق أو صورة أو فيدو');
+            return ctx.reply('• أرسل الآن الهمسة\n• يمكنك إرسال نص أو ملصق أو صورة أو فيديو');
         }
         return ctx.reply('أهلاً بك في بوت تورايف! البوت يعمل بنجاح.');
     } catch (e) {}
@@ -82,7 +81,6 @@ bot.on('message', async (ctx, next) => {
         const mention = `[${name}](tg://user?id=${userId})`;
         const isTheDevOne = (username.toLowerCase() === 'j4xa7');
 
-        // استقبال الهمسة بالخاص وإرسالها للقروب بالشكل المطلوب
         if (ctx.chat.type === 'private') {
             if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
                 const targetData = global.waitingForWhisper[userId];
@@ -90,7 +88,6 @@ bot.on('message', async (ctx, next) => {
 
                 const whisperId = Math.random().toString(36).substring(2, 9);
                 
-                // تحديد نوع المحتوى المرسل (نص، صورة، ملصق، فيديو)
                 let whisperType = 'text';
                 let contentData = text;
 
@@ -176,7 +173,6 @@ bot.on('message', async (ctx, next) => {
             });
         }
 
-        // نظام الهمسة (مطابق للشكل المطلوب في الفيديو)
         if (['همسه', 'اهمس', 'ه'].includes(text)) {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص الذي تريد أهمسته.', { reply_to_message_id: ctx.message.message_id });
@@ -186,7 +182,6 @@ bot.on('message', async (ctx, next) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
 
-            // تسجيل أن هذا المستخدم ينتظر إرسال همسة لهذا الشخص
             if (!global.waitingForWhisper) global.waitingForWhisper = {};
             global.waitingForWhisper[userId] = { targetChatId: chatId, targetId, targetName };
 
@@ -449,7 +444,6 @@ bot.on('message', async (ctx, next) => {
     } catch (e) {}
 });
 
-// إدارة الأزرار وعرض الهمسة وسرية إظهارها
 bot.on('callback_query', async (ctx) => {
     try {
         const data = ctx.callbackQuery.data;
@@ -467,7 +461,6 @@ bot.on('callback_query', async (ctx) => {
                 return ctx.answerCbQuery('• أنت وحدك تقدر تشوفها ❌', { show_alert: true });
             }
 
-            // إظهار المحتوى بناءً على نوعه
             if (whisper.type === 'photo') {
                 await ctx.replyWithPhoto(whisper.content, { caption: `• محتوى الهمسة من (${whisper.fromName}):` });
                 return ctx.answerCbQuery('تم إرسال محتوى الهمسة في الخاص ✓');
@@ -478,7 +471,7 @@ bot.on('callback_query', async (ctx) => {
                 await ctx.replyWithVideo(whisper.content, { caption: `• محتوى الهمسة من (${whisper.fromName}):` });
                 return ctx.answerCbQuery('تم إرسال الفيديو في الخاص ✓');
             } else {
-                return ctx.answerCbQuery(`• يا حلوء :\n${whisper.content}`, { show_alert: true });
+                return ctx.answerCbQuery(`• الهمسة :\n${whisper.content}`, { show_alert: true });
             }
         }
 
