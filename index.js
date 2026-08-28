@@ -268,7 +268,7 @@ bot.on('message', async (ctx, next) => {
             return ctx.reply(topText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر وضع لقب (مخصص للديف فقط)
+        // أمر وضع لقب (مخصص للديف فقط - يغير اللقب التعريفي للمشرف بالقروب)
         if (text.startsWith('ضع لقب ')) {
             if (!isTheDevOne) {
                 return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ فقط ❌', { reply_to_message_id: ctx.message.message_id });
@@ -282,16 +282,23 @@ bot.on('message', async (ctx, next) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
-            if (!db.titles[chatId]) db.titles[chatId] = {};
-            if (titleValue === 'حذف' || titleValue === 'مسح') {
-                delete db.titles[chatId][targetId];
-                saveData();
-                return ctx.reply(`• تم حذف اللقب عن ↦ ${targetMention} ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
-            }
+            try {
+                // تطبيق اللقب التعريفي مباشرة على حساب المشرف في تيليجرام
+                await ctx.setChatAdministratorCustomTitle(targetId, titleValue === 'حذف' || titleValue === 'مسح' ? '' : titleValue);
 
-            db.titles[chatId][targetId] = titleValue;
-            saveData();
-            return ctx.reply(`• تم تعيين اللقب للمستخدم ↦ ${targetMention}\n• اللقب: [ ${titleValue} ] ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                if (!db.titles[chatId]) db.titles[chatId] = {};
+                if (titleValue === 'حذف' || titleValue === 'مسح') {
+                    delete db.titles[chatId][targetId];
+                    saveData();
+                    return ctx.reply(`• تم حذف اللقب عن ↦ ${targetMention} ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                }
+
+                db.titles[chatId][targetId] = titleValue;
+                saveData();
+                return ctx.reply(`• تم تعيين اللقب للمستخدم ↦ ${targetMention}\n• اللقب: [ ${titleValue} ] ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            } catch (err) {
+                return ctx.reply('• فشل تعيين اللقب، تأكد أن المستخدم مشرف بالقروب وأن البوت يملك صلاحيات كافية.', { reply_to_message_id: ctx.message.message_id });
+            }
         }
 
         if (text === 'قفل المنشن' || text === 'فتح المنشن') {
@@ -410,7 +417,7 @@ bot.on('message', async (ctx, next) => {
             const targetRole = getUserRole(chatId, targetId, targetUsername);
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
-            // حصراً رفع وتنزيل المشرف والأوامر الحساسة تكون للديف فقط (حسب طلبك: ماحد يقدر يرفع غير الديف ون)
+            // حصرا الديف يقدر يرفع أو ينزل مشرف
             if (['رفع مشرف', 'تنزيل مشرف'].includes(text)) {
                 if (!isTheDevOne) {
                     return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ (المطور) فقط ❌', { reply_to_message_id: ctx.message.message_id });
@@ -423,36 +430,46 @@ bot.on('message', async (ctx, next) => {
                     chatId: chatId,
                     targetName: targetName,
                     rights: {
-                        can_manage_chat: true,
-                        can_delete_messages: true,
-                        can_manage_video_chats: true,
-                        can_restrict_members: true,
-                        can_promote_members: false,
                         can_change_info: false,
-                        can_invite_users: true,
-                        can_pin_messages: true
+                        can_pin_messages: false,
+                        can_restrict_members: false,
+                        can_invite_users: false,
+                        can_delete_messages: true,
+                        can_manage_video_chats: false,
+                        can_promote_members: false
                     }
                 };
 
                 const cfg = global.adminConfigSessions[targetId].rights;
-                return ctx.reply(`• حدد صلاحيات المشرف ↦ ${targetMention}\n• اضغط على الصلاحية لتفعيلها أو إيقافها ثم اضغط تم:`, {
-                    parse_mode: 'Markdown',
+                const panelText = `• طارق\n• رفع مشرف\n\n• حدد الصلاحيات ↦`;
+
+                return ctx.reply(panelText, {
                     reply_to_message_id: ctx.message.message_id,
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: `${cfg.can_delete_messages ? '✅' : '❌'} حذف الرسائل`, callback_data: `adm_toggle_${targetId}_can_delete_messages` },
-                                { text: `${cfg.can_restrict_members ? '✅' : '❌'} حظر/تقييد الأعضاء`, callback_data: `adm_toggle_${targetId}_can_restrict_members` }
+                                { text: `• تغيير معلومات المجموعه ↦ ${cfg.can_change_info ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_change_info` }
                             ],
                             [
-                                { text: `${cfg.can_pin_messages ? '✅' : '❌'} تثبيت الرسائل`, callback_data: `adm_toggle_${targetId}_can_pin_messages` },
-                                { text: `${cfg.can_invite_users ? '✅' : '❌'} إضافة أعضاء برابط`, callback_data: `adm_toggle_${targetId}_can_invite_users` }
+                                { text: `• تثبيت الرسائل ↦ ${cfg.can_pin_messages ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_pin_messages` }
                             ],
                             [
-                                { text: `${cfg.can_manage_video_chats ? '✅' : '❌'} إدارة المكالمات`, callback_data: `adm_toggle_${targetId}_can_manage_video_chats` }
+                                { text: `• حظر المستخدمين ↦ ${cfg.can_restrict_members ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_restrict_members` }
                             ],
                             [
-                                { text: '✨ تم حفظ الصلاحيات وتفعيل المشرف', callback_data: `adm_done_${targetId}` }
+                                { text: `• دعوة المستخدمين ↦ ${cfg.can_invite_users ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_invite_users` }
+                            ],
+                            [
+                                { text: `• مسح الرسائل ↦ ${cfg.can_delete_messages ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_delete_messages` }
+                            ],
+                            [
+                                { text: `• ادارة المكالمات ↦ ${cfg.can_manage_video_chats ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_manage_video_chats` }
+                            ],
+                            [
+                                { text: `• اضافة مشرفين ↦ ${cfg.can_promote_members ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_promote_members` }
+                            ],
+                            [
+                                { text: '- اخفاء الامر', callback_data: `adm_hide_${targetId}` }
                             ]
                         ]
                     }
@@ -561,21 +578,50 @@ bot.on('callback_query', async (ctx) => {
                 session.rights[permKey] = !session.rights[permKey];
                 const cfg = session.rights;
 
+                // تحديث مباشر للصلاحيات وتطبيقها فوراً بالقروب وترقية العضو بالمثل تلقائياً مع كل ضغطة زر
+                try {
+                    await ctx.promoteChatMember(targetId, {
+                        is_anonymous: false,
+                        can_manage_chat: true,
+                        can_delete_messages: cfg.can_delete_messages,
+                        can_manage_video_chats: cfg.can_manage_video_chats,
+                        can_restrict_members: cfg.can_restrict_members,
+                        can_promote_members: cfg.can_promote_members,
+                        can_change_info: cfg.can_change_info,
+                        can_invite_users: cfg.can_invite_users,
+                        can_pin_messages: cfg.can_pin_messages
+                    });
+
+                    if (!db.roles[session.chatId]) db.roles[session.chatId] = {};
+                    db.roles[session.chatId][targetId] = 'مشرف';
+                    saveData();
+                } catch (e) {}
+
                 await ctx.editMessageReplyMarkup({
                     inline_keyboard: [
                         [
-                            { text: `${cfg.can_delete_messages ? '✅' : '❌'} حذف الرسائل`, callback_data: `adm_toggle_${targetId}_can_delete_messages` },
-                            { text: `${cfg.can_restrict_members ? '✅' : '❌'} حظر/تقييد الأعضاء`, callback_data: `adm_toggle_${targetId}_can_restrict_members` }
+                            { text: `• تغيير معلومات المجموعه ↦ ${cfg.can_change_info ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_change_info` }
                         ],
                         [
-                            { text: `${cfg.can_pin_messages ? '✅' : '❌'} تثبيت الرسائل`, callback_data: `adm_toggle_${targetId}_can_pin_messages` },
-                            { text: `${cfg.can_invite_users ? '✅' : '❌'} إضافة أعضاء برابط`, callback_data: `adm_toggle_${targetId}_can_invite_users` }
+                            { text: `• تثبيت الرسائل ↦ ${cfg.can_pin_messages ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_pin_messages` }
                         ],
                         [
-                            { text: `${cfg.can_manage_video_chats ? '✅' : '❌'} إدارة المكالمات`, callback_data: `adm_toggle_${targetId}_can_manage_video_chats` }
+                            { text: `• حظر المستخدمين ↦ ${cfg.can_restrict_members ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_restrict_members` }
                         ],
                         [
-                            { text: '✨ تم حفظ الصلاحيات وتفعيل المشرف', callback_data: `adm_done_${targetId}` }
+                            { text: `• دعوة المستخدمين ↦ ${cfg.can_invite_users ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_invite_users` }
+                        ],
+                        [
+                            { text: `• مسح الرسائل ↦ ${cfg.can_delete_messages ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_delete_messages` }
+                        ],
+                        [
+                            { text: `• ادارة المكالمات ↦ ${cfg.can_manage_video_chats ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_manage_video_chats` }
+                        ],
+                        [
+                            { text: `• اضافة مشرفين ↦ ${cfg.can_promote_members ? 'نعم' : 'لا'}`, callback_data: `adm_toggle_${targetId}_can_promote_members` }
+                        ],
+                        [
+                            { text: '- اخفاء الامر', callback_data: `adm_hide_${targetId}` }
                         ]
                     ]
                 });
@@ -583,36 +629,19 @@ bot.on('callback_query', async (ctx) => {
             return ctx.answerCbQuery('تم تحديث الصلاحية ✓');
         }
 
-        if (data.startsWith('adm_done_')) {
-            const targetId = data.replace('adm_done_', '');
+        if (data.startsWith('adm_hide_')) {
+            const targetId = data.replace('adm_hide_', '');
             if (global.adminConfigSessions && global.adminConfigSessions[targetId]) {
-                const session = global.adminConfigSessions[targetId];
-                try {
-                    await ctx.promoteChatMember(targetId, {
-                        is_anonymous: false,
-                        can_manage_chat: true,
-                        can_delete_messages: session.rights.can_delete_messages,
-                        can_manage_video_chats: session.rights.can_manage_video_chats,
-                        can_restrict_members: session.rights.can_restrict_members,
-                        can_promote_members: false,
-                        can_change_info: false,
-                        can_invite_users: session.rights.can_invite_users,
-                        can_pin_messages: session.rights.can_pin_messages
-                    });
-
-                    if (!db.roles[session.chatId]) db.roles[session.chatId] = {};
-                    db.roles[session.chatId][targetId] = 'مشرف';
-                    saveData();
-
-                    delete global.adminConfigSessions[targetId];
-                    await ctx.editMessageText('• تم حفظ الصلاحيات ورفع العضو مشرف بنجاح ✓');
-                } catch (err) {
-                    await ctx.answerCbQuery('فشل تفعيل المشرف، تأكد من صلاحيات البوت في المجموعة.', { show_alert: true });
-                }
-            } else {
-                await ctx.answerCbQuery('انتهت الجلسة، قم بإرسال الأمر مرة أخرى.');
+                delete global.adminConfigSessions[targetId];
             }
-            return;
+            try {
+                await ctx.deleteMessage();
+            } catch (e) {
+                try {
+                    await ctx.editMessageText('• تم إخفاء لوحة الصلاحيات ✓');
+                } catch (err) {}
+            }
+            return ctx.answerCbQuery('تم اخفاء اللوحة ✓');
         }
 
         if (data.startsWith('view_whisper_')) {
