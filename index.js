@@ -111,14 +111,24 @@ bot.on('message', async (ctx, next) => {
                     content: contentData
                 };
 
-                const whisperMsgText = `• [${targetData.targetName}](tg://user?id=${targetData.targetId})\n• وصلتك همسة سرية من ${name}\n• أنت وحدك تقدر تشوفها`;
+                // التصميم الجديد للهمسة تماماً مثل الفيديو
+                const whisperMsgText = `ـ\n` +
+                                       `• يا حلوه ↰ [${targetData.targetName}](tg://user?id=${targetData.targetId})\n` +
+                                       `• وصلتك همسة سرية من ↰ ${name}\n` +
+                                       `• انت وحدك تقدر تشوفها`;
+
                 await bot.telegram.sendMessage(targetData.targetChatId, whisperMsgText, {
                     parse_mode: 'Markdown',
+                    reply_to_message_id: targetData.replyMessageId,
                     reply_markup: {
-                        inline_keyboard: [[
-                            { text: 'رؤية الهمسة', callback_data: `view_whisper_${whisperId}` },
-                            { text: 'رد على الهمسة', callback_data: `reply_whisper_${whisperId}` }
-                        ]]
+                        inline_keyboard: [
+                            [
+                                { text: 'رؤية الهمسة', callback_data: `view_whisper_${whisperId}` }
+                            ],
+                            [
+                                { text: 'رد على الهمسة', callback_data: `reply_whisper_${whisperId}` }
+                            ]
+                        ]
                     }
                 });
 
@@ -180,10 +190,11 @@ bot.on('message', async (ctx, next) => {
             const targetUser = ctx.message.reply_to_message.from;
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
+            const replyMessageId = ctx.message.reply_to_message.message_id;
             const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
 
             if (!global.waitingForWhisper) global.waitingForWhisper = {};
-            global.waitingForWhisper[userId] = { targetChatId: chatId, targetId, targetName };
+            global.waitingForWhisper[userId] = { targetChatId: chatId, targetId, targetName, replyMessageId };
 
             const replyText = `• تم تحديد الهمسه ↦ [${targetName}](tg://user?id=${targetId})\n• اضغط الزر لكتابة الهمسة`;
 
