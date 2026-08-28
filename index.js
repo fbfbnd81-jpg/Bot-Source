@@ -1,6 +1,7 @@
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
+const ytsr = require('ytsr');
 
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -12,6 +13,7 @@ const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
 const groupSettings = {}; 
+const whispers = {}; // تخزين الهمسات المؤقتة
 
 const DATA_FILE = './toraif_github_database.json';
 let db = { roles: {}, stats: {} };
@@ -71,6 +73,38 @@ bot.on('message', async (ctx) => {
         const mention = `[${name}](tg://user?id=${userId})`;
         const isTheDevOne = (username.toLowerCase() === 'j4xa7');
 
+        // التعامل مع الرسائل الخاصة (الهمسات)
+        if (ctx.chat.type === 'private') {
+            if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
+                const targetData = global.waitingForWhisper[userId];
+                delete global.waitingForWhisper[userId];
+
+                const whisperId = Math.random().toString(36).substring(2, 9);
+                whispers[whisperId] = {
+                    fromId: userId,
+                    fromName: name,
+                    toId: targetData.targetId,
+                    toName: targetData.targetName,
+                    text: text
+                };
+
+                // إرسال الهمسة للقروب بالشكل المطلوب
+                const whisperMsgText = `• تم تحديد الهمسه ↦ [${targetData.targetName}](tg://user?id=${targetData.targetId})\n• اضغط الزر لكتابة الهمسة`;
+                await bot.telegram.sendMessage(targetData.chatId, whisperMsgText, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: 'رؤية الهمسة', callback_data: `view_whisper_${whisperId}` },
+                            { text: 'رد على الهمسة', callback_data: `reply_whisper_${whisperId}` }
+                        ]]
+                    }
+                });
+
+                return ctx.reply('• تم إرسال الهمسه بنجاح ✓');
+            }
+            return;
+        }
+
         if (text === 'احبك' || text === 'أحبك') {
             const loveReplies = ['وانا احب ايفي', 'وانا احب توري', 'وانا بعد', 'اعشقك'];
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
@@ -97,6 +131,57 @@ bot.on('message', async (ctx) => {
             db.stats[chatId][userId].name = name;
             db.stats[chatId][userId].username = username;
             saveData();
+        }
+
+        // نظام بحث الأغاني (يوت / بحث)
+        if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
+            const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
+            if (!query) return ctx.reply('يرجى كتابة اسم الأغنية بعد الأمر.', { reply_to_message_id: ctx.message.message_id });
+
+            try {
+                const searchResults = await ytsr(query, { limit: 1 });
+                if (!searchResults || searchResults.items.length === 0) {
+                    return ctx.reply('لم يتم العثور على نتائج مطابقة.', { reply_to_message_id: ctx.message.message_id });
+                }
+                const video = searchResults.items[0];
+                const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
+
+                const musicReplyText = `[${video.title}](${video.url})\nانوفي 16 شراري\n\n• @${botUsername} 🎵`;
+                return ctx.reply(musicReplyText, {
+                    parse_mode: 'Markdown',
+                    reply_to_message_id: ctx.message.message_id,
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: '▶ تشغيل', url: video.url }
+                        ]]
+                    }
+                });
+            } catch (err) {
+                return ctx.reply('حدث خطأ أثناء البحث عن الأغنية.', { reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
+        // نظام الهمسة (همسه / اهمس / ه) بالرد على الشخص
+        if (['همسه', 'اهمس', 'ه'].includes(text)) {
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الشخص الذي تريد أهمسته.', { reply_to_message_id: ctx.message.message_id });
+            }
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+
+            const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
+            const replyText = `• تم تحديد الهمسه ↦ [${targetName}](tg://user?id=${targetId})\n• اضغط الزر لكتابة الهمسة`;
+
+            return ctx.reply(replyText, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: ctx.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: 'اهمس هنا ↗', url: `https://t.me/${botUsername}?start=whisper_${chatId}_${targetId}_${targetName}` }
+                    ]]
+                }
+            });
         }
 
         // أمر تفاعلي
@@ -345,6 +430,61 @@ bot.on('message', async (ctx) => {
         }
 
     } catch (e) {}
+});
+
+// التعامل مع الضغط على أزرار الهمسات وعملية /start الخاصة بالهمسة
+bot.on('callback_query', async (ctx) => {
+    try {
+        const data = ctx.callbackQuery.data;
+
+        if (data.startsWith('view_whisper_')) {
+            const whisperId = data.replace('view_whisper_', '');
+            const whisper = whispers[whisperId];
+
+            if (!whisper) {
+                return ctx.answerCbQuery('انتهت صلاحية الهمسة أو تم حذفها.', { show_alert: true });
+            }
+
+            const currentUserId = ctx.from.id;
+            if (currentUserId !== whisper.toId && currentUserId !== whisper.fromId) {
+                return ctx.answerCbQuery('عذراً، هذه الهمسة ليس لك (أنت وحدك تقدر تشوفها).', { show_alert: true });
+            }
+
+            return ctx.answerCbQuery(`محتوى الهمسة:\n${whisper.text}`, { show_alert: true });
+        }
+
+        if (data.startsWith('reply_whisper_')) {
+            const whisperId = data.replace('reply_whisper_', '');
+            const whisper = whispers[whisperId];
+            if (!whisper) {
+                return ctx.answerCbQuery('انتهت صلاحية الهمسة.', { show_alert: true });
+            }
+            const currentUserId = ctx.from.id;
+            if (currentUserId !== whisper.toId) {
+                return ctx.answerCbQuery('هذا الزر مخصص للشخص المرسل إليه الهمسة فقط.', { show_alert: true });
+            }
+
+            const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
+            await ctx.answerCbQuery();
+            return ctx.reply(`لرد الهمسة، اضغط على الرابط للذهاب لخاص البوت:\nhttps://t.me/${botUsername}`);
+        }
+    } catch (e) {}
+});
+
+bot.on('message', async (ctx, next) => {
+    if (ctx.chat && ctx.chat.type === 'private' && ctx.message.text && ctx.message.text.startsWith('/start whisper_')) {
+        const parts = ctx.message.text.replace('/start whisper_', '').split('_');
+        const chatId = parts[0];
+        const targetId = parts[1];
+        const targetName = decodeURIComponent(parts[2] || 'المستخدم');
+        const userId = ctx.from.id;
+
+        if (!global.waitingForWhisper) global.waitingForWhisper = {};
+        global.waitingForWhisper[userId] = { chatId, targetId, targetName };
+
+        return ctx.reply(`• تم تحديد الهمسه لـ ↦ ${targetName}\n• اكتب الهمسة الآن في الخاص (مثال: احبك):`);
+    }
+    return next();
 });
 
 bot.launch();
