@@ -76,7 +76,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
-        // فحص الكتم العادي والكتم العام (حذف رسالة المكتوم فوراً)
+        // فحص الكتم أو التقييد (حذف رسالة الشخص فوراً)
         if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             const isMutedInGroup = mutedUsers[chatId] && mutedUsers[chatId][userId];
             const isGloballyMuted = globalMutedUsers[userId];
@@ -169,7 +169,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'فك الكتم', 'فك الكتم العام'].includes(text) || text.startsWith('رفع ') || text === 'تنزيل الكل') {
+        if (['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام'].includes(text) || text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
             }
@@ -179,19 +179,21 @@ bot.on('message', async (ctx) => {
             const targetUsername = targetUser.username || '';
             const targetRole = getUserRole(chatId, targetId, targetUsername);
 
+            // الصلاحيات
             if (text === 'كتم' && !hasPermission(role, 'myth')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'كتم عام' && !hasPermission(role, 'Myth🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
-            if ((text === 'تقييد' || text === 'فك التقييد') && !hasPermission(role, 'Dev²🎖')) {
+            if ((text === 'تقييد' || text === 'فك التقييد' || text === 'رفع القيود') && !hasPermission(role, 'Dev²🎖')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
             if ((text.startsWith('رفع ') || text === 'تنزيل الكل') && !hasPermission(role, 'Myth🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
 
+            // حماية الرتب الأعلى أو المساوية
             if (['كتم', 'كتم عام', 'تقييد'].includes(text)) {
                 if ((roleHierarchy[role] || 0) <= (roleHierarchy[targetRole] || 0)) {
                     return ctx.reply(`• ماقدر تستخدم الامر على ↤ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
@@ -216,9 +218,12 @@ bot.on('message', async (ctx) => {
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم فك الكتم العام عنه .`, { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'تقييد') {
-                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم تقييده .`, { reply_to_message_id: ctx.message.message_id });
+                if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
+                mutedUsers[chatId][targetId] = true; // التقييد يمنعه من الكلام ويحذف رسائله مثل الكتم
+                return ctx.reply(`• المستخدم ذا ↤ ｢ ${targetName} ｣\n• تم تقييده .`, { reply_to_message_id: ctx.message.message_id });
             }
-            if (text === 'فك التقييد') {
+            if (text === 'فك التقييد' || text === 'رفع القيود') {
+                if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
                 return ctx.reply(`• تم رفع القيود عن ⟵ ｢ ${targetName} ｣ .`, { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'تنزيل الكل') {
@@ -250,7 +255,7 @@ bot.on('message', async (ctx) => {
         if (text === 'توري') return ctx.reply('• توري ⟵ @to6ri', { reply_to_message_id: ctx.message.message_id });
         if (text === 'ايفي' || text === 'ايلاف') return ctx.reply('• المطور ⟵ @j4xa7', { reply_to_message_id: ctx.message.message_id });
         if (text === 'تورايف') {
-            const replies = ['عيوني', 'أمر؟', 'سم', 'عيون ايفي وتوري', 'هلا'];
+            const replies = ['عيوني', 'أمر？', 'سم', 'عيون ايفي وتوري', 'هلا'];
             return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
