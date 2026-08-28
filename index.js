@@ -30,19 +30,19 @@ function saveData() {
     } catch (e) {}
 }
 
+// تحديد الرتب التلقائية للمطورين الأساسيين
 function getUserRole(chatId, userId, username) {
     const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
     if (username && devOnes.includes(username.toLowerCase())) {
-        return 'Dev²🎖';
+        return 'Dev🎖️';
     }
     if (db.roles[chatId] && db.roles[chatId][userId]) {
-        let storedRole = db.roles[chatId][userId];
-        if (storedRole === 'Dev🎖️') return 'Dev²🎖';
-        return storedRole;
+        return db.roles[chatId][userId];
     }
     return 'عضو';
 }
 
+// تسلسل الرتب من الأعلى (8) إلى الأقل (0)
 const roleHierarchy = {
     'عضو': 0,
     'مميز': 1,
@@ -50,33 +50,30 @@ const roleHierarchy = {
     'مالك اساسي': 3,
     'myth': 4,
     'Myth🎖️': 5,
-    'Dev 2': 6,
-    'Dev²🎖': 7,
+    'Dev²🎖': 6,
+    'Dev🎖️': 7,
     'Dev1_Super': 8
 };
 
 function hasPermission(userRole, requiredRole) {
-    let normalizedRole = userRole === 'Dev²🎖' ? 'Dev🎖️' : userRole;
-    let normalizedReq = requiredRole === 'Dev²🎖' ? 'Dev🎖️' : requiredRole;
-    return (roleHierarchy[normalizedRole] || 0) >= (roleHierarchy[normalizedReq] || 0);
+    return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
 }
 
 bot.on('message', async (ctx) => {
     try {
         if (!ctx.chat) return;
         
-        // يدعم القروبات والقنوات (إذا كانت القناة تدعم الرسائل أو التعليقات)
         const isChannel = ctx.chat.type === 'channel';
         const chatId = ctx.chat.id;
         const userId = ctx.from ? ctx.from.id : chatId;
         const username = ctx.from && ctx.from.username ? ctx.from.username : '';
         const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
-        const role = isChannel ? 'Dev²🎖' : getUserRole(chatId, userId, username);
+        const role = isChannel ? 'Dev🎖️' : getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isEdited = !!ctx.update.edited_message;
 
-        // الرد على كلمة "احبك" بشكل منوع
-        if (text === 'احبك') {
+        // الردود المنوعة على كلمة احبك
+        if (text === 'احبك' || text === 'أحبك') {
             const loveReplies = [
                 'وانا احب ايفي',
                 'وانا احب توري',
@@ -88,7 +85,6 @@ bot.on('message', async (ctx) => {
         }
 
         if (isChannel) {
-            // أوامر خاصة بالقناة لو حابة تفاعلات أو ردود سريعة
             if (text === 'تورايف') {
                 return ctx.reply('عيون ايفي وتوري في القناة ❤️');
             }
@@ -156,6 +152,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
+        // أوامر الرفع والتنزيل
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -164,7 +161,7 @@ bot.on('message', async (ctx) => {
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
 
-            if (!hasPermission(role, 'Dev🎖️')) {
+            if (!hasPermission(role, 'Dev²🎖')) {
                 return ctx.reply('• أمر الرفع والتنزيل يتطلب رتبة (Dev²🎖) فما فوق.', { reply_to_message_id: ctx.message.message_id });
             }
 
@@ -178,21 +175,20 @@ bot.on('message', async (ctx) => {
             if (text.startsWith('رفع ')) {
                 const rawRank = text.replace('رفع ', '').trim().toLowerCase();
                 let requestedRank = '';
-                let displayRank = '';
 
-                if (rawRank === 'ديف') { requestedRank = 'Dev 2'; displayRank = 'Dev 2'; }
-                else if (rawRank === 'مطور اساسي' || rawRank === 'ديف 1' || rawRank === 'ديف١') { requestedRank = 'Dev🎖️'; displayRank = 'Dev²🎖'; }
-                else if (rawRank === 'ميث') { requestedRank = 'myth'; displayRank = 'myth'; }
-                else if (rawRank === 'اكس' || rawRank === 'اكسترا') { requestedRank = 'Myth🎖️'; displayRank = 'Myth🎖️'; }
-                else if (rawRank === 'مميز') { requestedRank = 'مميز'; displayRank = 'مميز'; }
-                else if (rawRank === 'مالك') { requestedRank = 'مالك'; displayRank = 'مالك'; }
-                else if (rawRank === 'مالك اساسي') { requestedRank = 'مالك اساسي'; displayRank = 'مالك اساسي'; }
+                if (rawRank === 'ديف') { requestedRank = 'Dev²🎖'; }
+                else if (rawRank === 'مطور اساسي' || rawRank === 'ديف 1' || rawRank === 'ديف١') { requestedRank = 'Dev🎖️'; }
+                else if (rawRank === 'اكس' || rawRank === 'اكسترا') { requestedRank = 'Myth🎖️'; }
+                else if (rawRank === 'ميث') { requestedRank = 'myth'; }
+                else if (rawRank === 'مالك اساسي') { requestedRank = 'مالك اساسي'; }
+                else if (rawRank === 'مالك') { requestedRank = 'مالك'; }
+                else if (rawRank === 'مميز') { requestedRank = 'مميز'; }
                 else { return ctx.reply('عذراً، هذه الرتبة غير صحيحة.', { reply_to_message_id: ctx.message.message_id }); }
 
                 if (!db.roles[chatId]) db.roles[chatId] = {};
                 db.roles[chatId][targetId] = requestedRank;
                 saveData();
-                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم رفعه ⟵ ${displayRank}`, { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم رفعه ⟵ ${requestedRank}`, { reply_to_message_id: ctx.message.message_id });
             }
         }
 
