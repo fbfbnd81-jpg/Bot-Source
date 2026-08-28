@@ -7,7 +7,8 @@ http.createServer((req, res) => {
     res.end('Toraif Bot is active!');
 }).listen(process.env.PORT || 3000);
 
-const bot = new Telegraf('8963407967:AAEjxoIl2MYDghsdSVsAcWCEYRGrTqa_GS8');
+// حطي التوكن الجديد هنا
+const bot = new Telegraf('حطي_التوكن_الجديد_هنا');
 
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
@@ -30,7 +31,6 @@ function saveData() {
     } catch (e) {}
 }
 
-// تم حذف اليوزرات التلقائية عشان يعتمد على الرفع اليدوي فقط
 function getUserRole(chatId, userId, username) {
     if (db.roles[chatId] && db.roles[chatId][userId]) {
         return db.roles[chatId][userId];
