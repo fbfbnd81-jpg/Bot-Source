@@ -89,7 +89,14 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // أوامر قفل وفتح المنشن (للـ Dev ون فقط)
+        // تسجيل أي عضو يرسل رسالة تلقائياً عشان يضبط معه منشن @all
+        if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
+            if (!db.stats[chatId]) db.stats[chatId] = {};
+            db.stats[chatId][userId] = { count: (db.stats[chatId][userId]?.count || 0) + 1, name: name, username: username };
+            saveData();
+        }
+
+        // أوامر قفل وفتح المنشن (للـ Dev ون فقط) مع شكل "بواسطة"
         if (text === 'قفل المنشن' || text === 'فتح المنشن') {
             if (!isTheDevOne) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -98,14 +105,14 @@ bot.on('message', async (ctx) => {
             
             if (text === 'قفل المنشن') {
                 groupSettings[chatId].mentionAll = false;
-                return ctx.reply('تم قفل المنشن العام (@all) بنجاح 🔒', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• بواسطة ↤ ${mention}\n• تم قفل المنشن .`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             } else {
                 groupSettings[chatId].mentionAll = true;
-                return ctx.reply('تم فتح المنشن العام (@all) بنجاح 🔓', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• بواسطة ↤ ${mention}\n• تم فتح المنشن .`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
         }
 
-        // أمر @all لتاغ كل الأعضاء
+        // أمر @all لتاغ كل الأعضاء المسجلين بالقروب
         if (text === '@all') {
             if (!groupSettings[chatId]) groupSettings[chatId] = { violations: true, edit: true, mentionAll: true };
             if (groupSettings[chatId].mentionAll === false && !isTheDevOne) {
@@ -113,7 +120,7 @@ bot.on('message', async (ctx) => {
             }
             
             if (!db.stats[chatId] || Object.keys(db.stats[chatId]).length === 0) {
-                return ctx.reply('لا يوجد أعضاء مسجلين بالقروب بعد لعمل منشن.', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('لا يوجد أعضاء مسجلين بالقروب بعد (خلي الأعضاء يرسلون رسالة وحدة عشان يسجلهم البوت).', { reply_to_message_id: ctx.message.message_id });
             }
 
             let mentionText = '• تنبيه للجميع 📢:\n';
@@ -123,7 +130,7 @@ bot.on('message', async (ctx) => {
                 const mName = member.name || 'عضو';
                 mentionText += `[${mName}](tg://user?id=${id}) `;
                 count++;
-                if (count >= 30) break; // Telegram limit prevention
+                if (count >= 35) break; 
             }
             return ctx.reply(mentionText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
@@ -191,14 +198,6 @@ bot.on('message', async (ctx) => {
                 return ctx.reply(`عذراً ${mention} ‼️ : يمنع تعديل الرسايل بالمجموعة`, { parse_mode: 'Markdown' });
             }
         }
-
-        if (!db.stats[chatId]) db.stats[chatId] = {};
-        if (!db.stats[chatId][userId]) {
-            db.stats[chatId][userId] = { count: 0, name: name, username: username };
-        }
-        db.stats[chatId][userId].count += 1;
-        db.stats[chatId][userId].name = name;
-        saveData();
 
         if (text === 'رتبتي' || text === '/رتبتي') {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
