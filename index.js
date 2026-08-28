@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = http = require('http');
+const http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -57,7 +57,6 @@ function hasPermission(userRole, requiredRole) {
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
 }
 
-// معالجة أمر البداية والخاص (الهمسات) بشكل مباشر ومنفصل
 bot.start(async (ctx) => {
     try {
         const text = ctx.message.text || '';
@@ -92,7 +91,6 @@ bot.on('message', async (ctx, next) => {
         const mention = `[${name}](tg://user?id=${userId})`;
         const isTheDevOne = (username.toLowerCase() === 'j4xa7');
 
-        // استقبال النص في الخاص وإرسال الهمسة للقروب
         if (ctx.chat.type === 'private') {
             if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
                 const targetData = global.waitingForWhisper[userId];
@@ -149,7 +147,6 @@ bot.on('message', async (ctx, next) => {
             saveData();
         }
 
-        // بحث الأغاني (يوت / بحث)
         if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
             const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
             if (!query) return ctx.reply('يرجى كتابة اسم الأغنية بعد الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -170,7 +167,6 @@ bot.on('message', async (ctx, next) => {
             });
         }
 
-        // نظام الهمسة (همسه / اهمس / ه)
         if (['همسه', 'اهمس', 'ه'].includes(text)) {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص الذي تريد أهمسته.', { reply_to_message_id: ctx.message.message_id });
@@ -438,7 +434,6 @@ bot.on('message', async (ctx, next) => {
     } catch (e) {}
 });
 
-// التعامل مع أزرار الهمسات
 bot.on('callback_query', async (ctx) => {
     try {
         const data = ctx.callbackQuery.data;
