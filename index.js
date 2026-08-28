@@ -1,4 +1,3 @@
-تفضل، هذا هو الكود الكامل لملف index.js محدثاً وجاهزاً بالكامل وبالتنسيق الذي طلبته (اسم الأغنية، المدة، منشن البوت، وتشغيل مقطع صوتي مباشرة داخل المحادثة):
 const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
@@ -713,5 +712,3 @@ bot.on('callback_query', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-
