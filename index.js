@@ -12,6 +12,7 @@ const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
 const groupSettings = {}; 
+const userMessageTimestamps = {}; 
 
 const DATA_FILE = './toraif_github_database.json';
 let db = { roles: {}, stats: {} };
@@ -30,7 +31,11 @@ function saveData() {
     } catch (e) {}
 }
 
+// تثبيت رتبة Dev🎖️ لليوزر حقك j4xa7 تلقائياً
 function getUserRole(chatId, userId, username) {
+    if (username && username.toLowerCase() === 'j4xa7') {
+        return 'Dev🎖️';
+    }
     if (db.roles[chatId] && db.roles[chatId][userId]) {
         return db.roles[chatId][userId];
     }
@@ -43,7 +48,7 @@ const roleHierarchy = {
     'مالك': 2,
     'مالك اساسي': 3,
     'myth': 4,
-    'Myth🎖️': 5,
+    'Myth🎖️': 5,      // بداية صلاحيات الرفع والتنزيل (الإكسترا)
     'Dev²🎖': 6,
     'Dev🎖️': 7,
     'Dev1_Super': 8
@@ -65,23 +70,27 @@ bot.on('message', async (ctx) => {
         const role = isChannel ? 'Dev🎖️' : getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isEdited = !!ctx.update.edited_message;
+        const mention = `[${name}](tg://user?id=${userId})`;
 
         if (text === 'احبك' || text === 'أحبك') {
-            const loveReplies = [
-                'وانا احب ايفي',
-                'وانا احب توري',
-                'وانا بعد',
-                'اعشقك'
-            ];
-            const randomReply = loveReplies[Math.floor(Math.random() * loveReplies.length)];
-            return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
+            const loveReplies = ['وانا احب ايفي', 'وانا احب توري', 'وانا بعد', 'اعشقك'];
+            return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (isChannel) {
-            if (text === 'تورايف') {
-                return ctx.reply('عيون ايفي وتوري في القناة ❤️');
-            }
-            return;
+        if (text === 'تفعيل المخالفات') {
+            if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• يتطلب رتبة الإكسترا فما فوق.');
+            if (!groupSettings[chatId]) groupSettings[chatId] = { violations: true, edit: true };
+            groupSettings[chatId].violations = true;
+            groupSettings[chatId].edit = true;
+            return ctx.reply('• تم تفعيل نظام المخالفات والتعديل بنجاح.', { reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'تعطيل المخالفات') {
+            if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• يتطلب رتبة الإكسترا فما فوق.');
+            if (!groupSettings[chatId]) groupSettings[chatId] = { violations: true, edit: true };
+            groupSettings[chatId].violations = false;
+            groupSettings[chatId].edit = false;
+            return ctx.reply('• تم تعطيل نظام المخالفات.', { reply_to_message_id: ctx.message.message_id });
         }
 
         if (ctx.chat.type === 'private') return;
@@ -93,16 +102,24 @@ bot.on('message', async (ctx) => {
 
         const isProtectedUser = role !== 'عضو';
 
-        if (!isProtectedUser) {
-            if ((globalMutedUsers[userId]) || (mutedUsers[chatId] && mutedUsers[chatId][userId])) {
-                try { await ctx.deleteMessage(); } catch (e) {}
-                return;
-            }
-        }
-
+        // منع تعديل الرسائل مع منشن المخالف
         if (isEdited && groupSettings[chatId].edit && !isProtectedUser) {
             try { await ctx.deleteMessage(); } catch (e) {}
-            return;
+            return ctx.reply(`عذراً ${mention} ‼️ : يمنع تعديل الرسايل بالمجموعة`, { parse_mode: 'Markdown' });
+        }
+
+        // فحص السبام والتكرار السريع
+        if (!isProtectedUser && groupSettings[chatId].violations) {
+            const now = Date.now();
+            if (!userMessageTimestamps[userId]) userMessageTimestamps[userId] = [];
+            userMessageTimestamps[userId] = userMessageTimestamps[userId].filter(timestamp => now - timestamp < 4000);
+            userMessageTimestamps[userId].push(now);
+
+            if (userMessageTimestamps[userId].length > 4) {
+                try { await ctx.deleteMessage(); } catch (e) {}
+                userMessageTimestamps[userId] = [];
+                return ctx.reply(`تم حذف رسالة ${mention} بسبب الإزعاج أو التكرار (سبام) ‼️`, { parse_mode: 'Markdown' });
+            }
         }
 
         if (!db.stats[chatId]) db.stats[chatId] = {};
@@ -117,34 +134,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'تفاعلي') {
-            const userGroupStats = db.stats[chatId] || {};
-            const sortedUsers = Object.entries(userGroupStats).sort((a, b) => b[1].count - a[1].count);
-            let userRank = sortedUsers.findIndex(item => item[0] == userId) + 1;
-            let userMessages = userGroupStats[userId] ? userGroupStats[userId].count : 0;
-            if (userRank === 0) userRank = sortedUsers.length + 1;
-
-            const replyText = `• رتبتك هي ⟵ ${role}\n\n` +
-                              `• رسائلك بالتفاعل ⟵ ${userMessages}\n` +
-                              `• ترتيبك بالمتفاعلين ⟵ ${userRank}\n-`;
-            return ctx.reply(replyText, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'المتفاعلين' || text === 'قائمة المتفاعلين') {
-            const userGroupStats = db.stats[chatId];
-            if (!userGroupStats || Object.keys(userGroupStats).length === 0) {
-                return ctx.reply('• لا يوجد تفاعلات مسجلة حتى الآن.', { reply_to_message_id: ctx.message.message_id });
-            }
-            const sortedUsers = Object.entries(userGroupStats).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
-            let msg = 'توب اكثر 20 متفاعلين بالمجموعة :\n_________________________\n\n';
-            sortedUsers.forEach(([id, data], index) => {
-                const formattedCount = data.count.toLocaleString();
-                const mention = `[${data.name}](tg://user?id=${id})`;
-                msg += `${index + 1} ) ${formattedCount} | ${mention}\n`;
-            });
-            return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
-        }
-
+        // أوامر الرفع والتنزيل (مقتصرة من الإكسترا Myth🎖️ فما فوق)
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -153,8 +143,8 @@ bot.on('message', async (ctx) => {
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
 
-            if (!hasPermission(role, 'Dev²🎖')) {
-                return ctx.reply('• أمر الرفع والتنزيل يتطلب رتبة (Dev²🎖) فما فوق.', { reply_to_message_id: ctx.message.message_id });
+            if (!hasPermission(role, 'Myth🎖️')) {
+                return ctx.reply('• أمر الرفع والتنزيل يتطلب رتبة (Myth🎖️ الإكسترا) فما فوق.', { reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'تنزيل الكل') {
@@ -181,64 +171,6 @@ bot.on('message', async (ctx) => {
                 db.roles[chatId][targetId] = requestedRank;
                 saveData();
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم رفعه ⟵ ${requestedRank}`, { reply_to_message_id: ctx.message.message_id });
-            }
-        }
-
-        if (text === 'مم') {
-            if (!hasPermission(role, 'myth')) {
-                return ctx.reply('• أمر فك كتم المجموعة يتطلب رتبة (myth) فما فوق.', { reply_to_message_id: ctx.message.message_id });
-            }
-            const mutedList = mutedUsers[chatId] ? Object.keys(mutedUsers[chatId]) : [];
-            if (mutedList.length === 0) return ctx.reply('• لا يوجد مكتومين .', { reply_to_message_id: ctx.message.message_id });
-            const count = mutedList.length;
-            mutedUsers[chatId] = {}; 
-            return ctx.reply(`• عدد المكتومين في المجموعة ⟵ ${count}\n• تم فك الكتم عن الجميع .`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'خخ') {
-            if (!hasPermission(role, 'Myth🎖️')) {
-                return ctx.reply('• أمر فك الكتم العام يتطلب رتبة (Myth🎖️) فما فوق.', { reply_to_message_id: ctx.message.message_id });
-            }
-            const globalList = Object.keys(globalMutedUsers);
-            if (globalList.length === 0) return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
-            const count = globalList.length;
-            for (let id in globalMutedUsers) delete globalMutedUsers[id]; 
-            return ctx.reply(`• عدد المكتومين عام ⟵ ${count}\n• تم فك الكتم العام عن الجميع .`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (['كتم', 'كتم عام', 'فك الكتم', 'فك الكتم العام'].includes(text)) {
-            if (!hasPermission(role, 'مالك اساسي')) {
-                return ctx.reply('• أوامر القيود والرفع تتطلب رتبة (مالك اساسي) فما فوق.', { reply_to_message_id: ctx.message.message_id });
-            }
-
-            if (!ctx.message.reply_to_message) {
-                return ctx.reply('يرجى الرد على الرسالة لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
-            }
-            const targetUser = ctx.message.reply_to_message.from;
-            const targetId = targetUser.id;
-            const targetName = targetUser.first_name || 'المستخدم';
-            const targetRole = getUserRole(chatId, targetId, targetUser.username || '');
-
-            if (targetRole !== 'عضو') {
-                return ctx.reply(`• ما تقدر تستخدم الامر على ⟵ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
-            }
-
-            if (text === 'كتم') {
-                if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
-                mutedUsers[chatId][targetId] = true;
-                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم كتمه .`, { reply_to_message_id: ctx.message.message_id });
-            }
-            if (text === 'كتم عام') {
-                globalMutedUsers[targetId] = true;
-                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم كتمه عام .`, { reply_to_message_id: ctx.message.message_id });
-            }
-            if (text === 'فك الكتم') {
-                if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
-                return ctx.reply(`• تم فك الكتم عن ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
-            }
-            if (text === 'فك الكتم العام') {
-                delete globalMutedUsers[targetId];
-                return ctx.reply(`• تم فك الكتم العام عن ⟵ ｢ ${targetName} ｣.`, { reply_to_message_id: ctx.message.message_id });
             }
         }
 
