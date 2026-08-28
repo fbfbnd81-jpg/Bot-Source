@@ -31,7 +31,7 @@ function saveData() {
     } catch (e) {}
 }
 
-// تثبيت رتبة Dev🎖️ لليوزر حقك j4xa7 تلقائياً
+// حسابك يثبت كـ Dev🎖️ (الديف ون) وما ينزل أبداً
 function getUserRole(chatId, userId, username) {
     if (username && username.toLowerCase() === 'j4xa7') {
         return 'Dev🎖️';
@@ -48,7 +48,7 @@ const roleHierarchy = {
     'مالك': 2,
     'مالك اساسي': 3,
     'myth': 4,
-    'Myth🎖️': 5,      // بداية صلاحيات الرفع والتنزيل (الإكسترا)
+    'Myth🎖️': 5,      
     'Dev²🎖': 6,
     'Dev🎖️': 7,
     'Dev1_Super': 8
@@ -77,20 +77,32 @@ bot.on('message', async (ctx) => {
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'تفعيل المخالفات') {
-            if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• يتطلب رتبة الإكسترا فما فوق.');
+        // أوامر الفتح والقفل خاصة بك وحدك (الديف ون j4xa7) أو بصلاحية Dev🎖️
+        if (text === 'فتح المخالفات' || text === 'فتح التعديل') {
+            if (username.toLowerCase() !== 'j4xa7' && role !== 'Dev🎖️') {
+                return ctx.reply('• هذا الأمر مخصص للديف ون فقط.');
+            }
             if (!groupSettings[chatId]) groupSettings[chatId] = { violations: true, edit: true };
             groupSettings[chatId].violations = true;
             groupSettings[chatId].edit = true;
-            return ctx.reply('• تم تفعيل نظام المخالفات والتعديل بنجاح.', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply('تم فتح المخالفات والتعديل. 🔓', { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'تعطيل المخالفات') {
-            if (!hasPermission(role, 'Myth🎖️')) return ctx.reply('• يتطلب رتبة الإكسترا فما فوق.');
+        if (text === 'قفل المخالفات' || text === 'قفل التعديل') {
+            if (username.toLowerCase() !== 'j4xa7' && role !== 'Dev🎖️') {
+                return ctx.reply('• هذا الأمر مخصص للديف ون فقط.');
+            }
             if (!groupSettings[chatId]) groupSettings[chatId] = { violations: true, edit: true };
             groupSettings[chatId].violations = false;
             groupSettings[chatId].edit = false;
-            return ctx.reply('• تم تعطيل نظام المخالفات.', { reply_to_message_id: ctx.message.message_id });
+
+            const closeMsg = `تم قفل المخالفات بنجاح 🔒\n\n` +
+                             `المحتوى الممنوع في المجموعة:\n` +
+                             `• المخدرات وأي شكل من أشكال التعاطي\n` +
+                             `• العنف الدموي والمشاهد المروعة\n` +
+                             `• الأسلحة النارية أو التهديد بها\n\n` +
+                             `سيتم حذف المحتوى المخالف تلقائيًا مع نظام إنذارات (3 إنذارات ⟵ عقوبة).`;
+            return ctx.reply(closeMsg, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (ctx.chat.type === 'private') return;
@@ -100,25 +112,28 @@ bot.on('message', async (ctx) => {
             groupSettings[chatId] = { violations: true, edit: true };
         }
 
-        const isProtectedUser = role !== 'عضو';
+        // الاستثناء الوحيد للحماية هو أنت (الديف ون) فقط، بينما الإداريين الباقين تتطبق عليهم الحماية إذا كانت مقفلة
+        const isTheDevOne = (username.toLowerCase() === 'j4xa7');
 
-        // منع تعديل الرسائل مع منشن المخالف
-        if (isEdited && groupSettings[chatId].edit && !isProtectedUser) {
-            try { await ctx.deleteMessage(); } catch (e) {}
-            return ctx.reply(`عذراً ${mention} ‼️ : يمنع تعديل الرسايل بالمجموعة`, { parse_mode: 'Markdown' });
-        }
-
-        // فحص السبام والتكرار السريع
-        if (!isProtectedUser && groupSettings[chatId].violations) {
-            const now = Date.now();
-            if (!userMessageTimestamps[userId]) userMessageTimestamps[userId] = [];
-            userMessageTimestamps[userId] = userMessageTimestamps[userId].filter(timestamp => now - timestamp < 4000);
-            userMessageTimestamps[userId].push(now);
-
-            if (userMessageTimestamps[userId].length > 4) {
+        if (!isTheDevOne) {
+            // منع تعديل الرسائل للجميع إذا كان النظام مقفل (يشمل الإداريين والكل)
+            if (isEdited && !groupSettings[chatId].edit) {
                 try { await ctx.deleteMessage(); } catch (e) {}
-                userMessageTimestamps[userId] = [];
-                return ctx.reply(`تم حذف رسالة ${mention} بسبب الإزعاج أو التكرار (سبام) ‼️`, { parse_mode: 'Markdown' });
+                return ctx.reply(`عذراً ${mention} ‼️ : يمنع تعديل الرسايل بالمجموعة`, { parse_mode: 'Markdown' });
+            }
+
+            // فحص السبام والتكرار للجميع إذا كانت المخالفات مقفلة
+            if (!groupSettings[chatId].violations) {
+                const now = Date.now();
+                if (!userMessageTimestamps[userId]) userMessageTimestamps[userId] = [];
+                userMessageTimestamps[userId] = userMessageTimestamps[userId].filter(timestamp => now - timestamp < 4000);
+                userMessageTimestamps[userId].push(now);
+
+                if (userMessageTimestamps[userId].length > 4) {
+                    try { await ctx.deleteMessage(); } catch (e) {}
+                    userMessageTimestamps[userId] = [];
+                    return ctx.reply(`تم حذف رسالة ${mention} بسبب الإزعاج أو التكرار (سبام) ‼️`, { parse_mode: 'Markdown' });
+                }
             }
         }
 
@@ -134,7 +149,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر الرفع والتنزيل (مقتصرة من الإكسترا Myth🎖️ فما فوق)
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
