@@ -76,6 +76,19 @@ bot.on('message', async (ctx) => {
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
+        // فحص الكتم العادي والكتم العام (حذف رسالة المكتوم فوراً)
+        if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
+            const isMutedInGroup = mutedUsers[chatId] && mutedUsers[chatId][userId];
+            const isGloballyMuted = globalMutedUsers[userId];
+
+            if (isMutedInGroup || isGloballyMuted) {
+                try {
+                    await ctx.deleteMessage();
+                } catch (e) {}
+                return; // إيقاف تنفيذ أي شي ثاني للرسايل المكتومة
+            }
+        }
+
         // أوامر الفتح والقفل للديف ون فقط
         if (text === 'فتح المخالفات' || text === 'فتح التعديل') {
             if (!hasPermission(role, 'Dev🎖️')) {
@@ -104,7 +117,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(closeMsg, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر مم (فك كتم المجموعة) - يتطلب ميث فما فوق
+        // أمر مم (فك كتم المجموعة)
         if (text === 'مم') {
             if (!hasPermission(role, 'myth')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
@@ -116,7 +129,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• تم مسح ( ${count} ) من المكتومين`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر خخ (فك الكتم العام) - يتطلب إكسترا Myth🎖️ فما فوق
+        // أمر خخ (فك الكتم العام)
         if (text === 'خخ') {
             if (!hasPermission(role, 'Myth🎖️')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -169,7 +182,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ⟵ ｢ ${role} ｣`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر كتم، كتم عام، تقييد، رفع، تنزيل
         if (['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'فك الكتم', 'فك الكتم العام'].includes(text) || text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
@@ -178,7 +190,6 @@ bot.on('message', async (ctx) => {
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
 
-            // فحص صلاحيات الأوامر
             if (text === 'كتم' && !hasPermission(role, 'myth')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
             }
@@ -197,9 +208,17 @@ bot.on('message', async (ctx) => {
                 mutedUsers[chatId][targetId] = true;
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم كتمه .`, { reply_to_message_id: ctx.message.message_id });
             }
+            if (text === 'فك الكتم') {
+                if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم فك الكتم عنه .`, { reply_to_message_id: ctx.message.message_id });
+            }
             if (text === 'كتم عام') {
                 globalMutedUsers[targetId] = true;
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم كتمه عام .`, { reply_to_message_id: ctx.message.message_id });
+            }
+            if (text === 'فك الكتم العام') {
+                delete globalMutedUsers[targetId];
+                return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم فك الكتم العام عنه .`, { reply_to_message_id: ctx.message.message_id });
             }
             if (text === 'تقييد') {
                 return ctx.reply(`• المستخدم ⟵ ｢ ${targetName} ｣\n• تم تقييده .`, { reply_to_message_id: ctx.message.message_id });
@@ -246,4 +265,3 @@ bot.on('message', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
