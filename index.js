@@ -168,24 +168,45 @@ bot.on('message', async (ctx, next) => {
             saveData();
         }
 
+        // تم التعديل: بحث وتشغيل الأغنية مباشرة داخل التيليجرام بدل الذهاب لليوتيوب
         if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
             const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
             if (!query) return ctx.reply('يرجى كتابة اسم الأغنية بعد الأمر.', { reply_to_message_id: ctx.message.message_id });
 
-            const encodedQuery = encodeURIComponent(query);
-            const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodedQuery}`;
-            const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
+            const searchingMsg = await ctx.reply(`🔍 جاري البحث عن: [ ${query} ] ...`, { reply_to_message_id: ctx.message.message_id });
 
-            const musicReplyText = `[${query}](https://www.youtube.com/results?search_query=${encodedQuery})\nانوفي 16 شراري\n\n• @${botUsername} 🎵`;
-            return ctx.reply(musicReplyText, {
-                parse_mode: 'Markdown',
-                reply_to_message_id: ctx.message.message_id,
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: '▶ تشغيل', url: ytSearchUrl }
-                    ]]
+            try {
+                // جلب نتائج بحث صوتية حقيقية عبر يوتيوب/تيليجرام
+                const searchRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&limit=1`);
+                const data = await searchRes.json();
+
+                if (data.results && data.results.length > 0) {
+                    const track = data.results[0];
+                    const audioUrl = track.previewUrl;
+                    const trackName = track.trackName;
+                    const artistName = track.artistName;
+                    const artworkUrl = track.artworkUrl100 ? track.artworkUrl100.replace('100x100', '600x600') : null;
+
+                    try { await ctx.deleteMessage(searchingMsg.message_id); } catch (e) {}
+
+                    if (audioUrl) {
+                        return ctx.replyWithAudio(audioUrl, {
+                            title: trackName,
+                            performer: artistName,
+                            caption: `🎵 | ${trackName} - ${artistName}\n✨ | تم البحث بواسطة: ${mention}`,
+                            parse_mode: 'Markdown',
+                            reply_to_message_id: ctx.message.message_id
+                        });
+                    }
                 }
-            });
+                
+                try { await ctx.deleteMessage(searchingMsg.message_id); } catch (e) {}
+                return ctx.reply(`عذراً، لم أتمكن من العثور على ملف صوتي مباشر لـ: "${query}". جرب اسمًا آخر.`, { reply_to_message_id: ctx.message.message_id });
+
+            } catch (err) {
+                try { await ctx.deleteMessage(searchingMsg.message_id); } catch (e) {}
+                return ctx.reply('حدث خطأ أثناء جلب الأغنية، حاول مرة أخرى.', { reply_to_message_id: ctx.message.message_id });
+            }
         }
 
         if (['همسه', 'اهمس', 'ه'].includes(text)) {
@@ -268,7 +289,6 @@ bot.on('message', async (ctx, next) => {
             return ctx.reply(topText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر وضع لقب (مخصص للديف فقط - يغير اللقب التعريفي للمشرف بالقروب)
         if (text.startsWith('ضع لقب ')) {
             if (!isTheDevOne) {
                 return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ فقط ❌', { reply_to_message_id: ctx.message.message_id });
@@ -283,7 +303,6 @@ bot.on('message', async (ctx, next) => {
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
             try {
-                // تطبيق اللقب التعريفي مباشرة على حساب المشرف في تيليجرام
                 await ctx.setChatAdministratorCustomTitle(targetId, titleValue === 'حذف' || titleValue === 'مسح' ? '' : titleValue);
 
                 if (!db.titles[chatId]) db.titles[chatId] = {};
@@ -417,7 +436,6 @@ bot.on('message', async (ctx, next) => {
             const targetRole = getUserRole(chatId, targetId, targetUsername);
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
-            // حصرا الديف يقدر يرفع أو ينزل مشرف
             if (['رفع مشرف', 'تنزيل مشرف'].includes(text)) {
                 if (!isTheDevOne) {
                     return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ (المطور) فقط ❌', { reply_to_message_id: ctx.message.message_id });
@@ -578,7 +596,6 @@ bot.on('callback_query', async (ctx) => {
                 session.rights[permKey] = !session.rights[permKey];
                 const cfg = session.rights;
 
-                // تحديث مباشر للصلاحيات وتطبيقها فوراً بالقروب وترقية العضو بالمثل تلقائياً مع كل ضغطة زر
                 try {
                     await ctx.promoteChatMember(targetId, {
                         is_anonymous: false,
@@ -645,7 +662,7 @@ bot.on('callback_query', async (ctx) => {
         }
 
         if (data.startsWith('view_whisper_')) {
-            const whisperId = data.replace('view_whisper_', '');
+            const whisperId = data.reply_to_message_id ? '' : data.replace('view_whisper_', '');
             const whisper = whispers[whisperId];
 
             if (!whisper) {
