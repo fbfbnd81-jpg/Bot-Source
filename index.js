@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = http = require('http');
+const http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -179,7 +179,6 @@ bot.on('message', async (ctx) => {
             const targetUsername = targetUser.username || '';
             const targetRole = getUserRole(chatId, targetId, targetUsername);
 
-            // فحص صلاحيات الأوامر الأساسية
             if (text === 'كتم' && !hasPermission(role, 'myth')) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
             }
@@ -193,7 +192,6 @@ bot.on('message', async (ctx) => {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
 
-            // منع تنفيذ أمر الكتم أو الحظر على شخص رتبته أعلى أو مساوية لرتبتك
             if (['كتم', 'كتم عام', 'تقييد'].includes(text)) {
                 if ((roleHierarchy[role] || 0) <= (roleHierarchy[targetRole] || 0)) {
                     return ctx.reply(`• ماقدر تستخدم الامر على ↤ ｢ ${targetRole} ｣`, { reply_to_message_id: ctx.message.message_id });
@@ -238,7 +236,7 @@ bot.on('message', async (ctx) => {
                 else if (rawRank === 'اكس' || rawRank === 'اكسترا') { requestedRank = 'Myth🎖️'; }
                 else if (rawRank === 'ميث') { requestedRank = 'myth'; }
                 else if (rawRank === 'مالك اساسي') { requestedRank = 'مالك اساسي'; }
-                else if (rawRank === 'مالك') { requestedRank, requestedRank = 'مالك'; }
+                else if (rawRank === 'مالك') { requestedRank = 'مالك'; }
                 else if (rawRank === 'مميز') { requestedRank = 'مميز'; }
                 else { return ctx.reply('عذراً، هذه الرتبة غير صحيحة.', { reply_to_message_id: ctx.message.message_id }); }
 
@@ -256,7 +254,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
-    }चार्य (e) {}
+    } catch (e) {}
 });
 
 bot.launch();
