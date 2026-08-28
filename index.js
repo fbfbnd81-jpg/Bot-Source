@@ -30,19 +30,14 @@ function saveData() {
     } catch (e) {}
 }
 
-// تحديد الرتب التلقائية للمطورين الأساسيين
+// تم حذف اليوزرات التلقائية عشان يعتمد على الرفع اليدوي فقط
 function getUserRole(chatId, userId, username) {
-    const devOnes = ['j4xa7', 'to6ri', 'evy', 'evelaf', 'i_evy', 'evyyytoiry'];
-    if (username && devOnes.includes(username.toLowerCase())) {
-        return 'Dev🎖️';
-    }
     if (db.roles[chatId] && db.roles[chatId][userId]) {
         return db.roles[chatId][userId];
     }
     return 'عضو';
 }
 
-// تسلسل الرتب من الأعلى (8) إلى الأقل (0)
 const roleHierarchy = {
     'عضو': 0,
     'مميز': 1,
@@ -72,7 +67,6 @@ bot.on('message', async (ctx) => {
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isEdited = !!ctx.update.edited_message;
 
-        // الردود المنوعة على كلمة احبك
         if (text === 'احبك' || text === 'أحبك') {
             const loveReplies = [
                 'وانا احب ايفي',
@@ -152,7 +146,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(msg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر الرفع والتنزيل
         if (text.startsWith('رفع ') || text === 'تنزيل الكل') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
