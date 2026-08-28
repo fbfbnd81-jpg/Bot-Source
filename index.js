@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = require('http');
+const http = http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -57,35 +57,43 @@ function hasPermission(userRole, requiredRole) {
     return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
 }
 
+// معالجة أمر البداية والخاص (الهمسات) بشكل مباشر ومنفصل
+bot.start(async (ctx) => {
+    try {
+        const text = ctx.message.text || '';
+        const userId = ctx.from.id;
+
+        if (text.startsWith('/start whisper_')) {
+            const parts = text.replace('/start whisper_', '').split('_');
+            const targetChatId = parts[0];
+            const targetId = parts[1];
+            const targetName = decodeURIComponent(parts[2] || 'المستخدم');
+
+            if (!global.waitingForWhisper) global.waitingForWhisper = {};
+            global.waitingForWhisper[userId] = { targetChatId, targetId, targetName };
+
+            return ctx.reply(`• تم تحديد الهمسه لـ ↦ ${targetName}\n• اكتب الهمسة الآن في الخاص (مثال: احبك):`);
+        }
+        return ctx.reply('أهلاً بك في بوت تورايف! البوت يعمل بنجاح.');
+    } catch (e) {}
+});
+
 bot.on('message', async (ctx, next) => {
     try {
         if (!ctx.chat) return;
-        
-        const isChannel = ctx.chat.type === 'channel';
+
         const chatId = ctx.chat.id;
         const userId = ctx.from ? ctx.from.id : chatId;
         const username = ctx.from && ctx.from.username ? ctx.from.username : '';
         const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
-        const role = isChannel ? 'Dev🎖️' : getUserRole(chatId, userId, username);
+        const role = getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isEdited = !!ctx.update.edited_message;
         const mention = `[${name}](tg://user?id=${userId})`;
         const isTheDevOne = (username.toLowerCase() === 'j4xa7');
 
-        // استقبال الهمسة في الخاص
+        // استقبال النص في الخاص وإرسال الهمسة للقروب
         if (ctx.chat.type === 'private') {
-            if (text.startsWith('/start whisper_')) {
-                const parts = text.replace('/start whisper_', '').split('_');
-                const targetChatId = parts[0];
-                const targetId = parts[1];
-                const targetName = decodeURIComponent(parts[2] || 'المستخدم');
-
-                if (!global.waitingForWhisper) global.waitingForWhisper = {};
-                global.waitingForWhisper[userId] = { targetChatId, targetId, targetName };
-
-                return ctx.reply(`• تم تحديد الهمسه لـ ↦ ${targetName}\n• اكتب الهمسة الآن في الخاص (مثال: احبك):`);
-            }
-
             if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
                 const targetData = global.waitingForWhisper[userId];
                 delete global.waitingForWhisper[userId];
@@ -112,7 +120,7 @@ bot.on('message', async (ctx, next) => {
 
                 return ctx.reply('• تم إرسال الهمسه بنجاح ✓');
             }
-            return next();
+            return;
         }
 
         if (text === 'احبك' || text === 'أحبك') {
