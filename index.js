@@ -142,6 +142,35 @@ bot.on('message', async (ctx, next) => {
             return;
         }
 
+        // --- لوحة الأوامر (بأزرار شفافة وخاصة بالمطور Dev فقط) ---
+        if (['الأوامر', 'الاوامر', 'الخدمات', 'مساعدة', '/help'].includes(text)) {
+            if (!isTheDevOne) {
+                return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ فقط ❌', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const menuText = `• أهلاً بك يا مطورنا في لوحة الأوامر الشفافة 🛠️`;
+
+            return ctx.reply(menuText, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: ctx.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '• أوامر الحماية والتحكم', callback_data: 'dev_cmd_protection' },
+                            { text: '• أوامر التفاعل والأعضاء', callback_data: 'dev_cmd_stats' }
+                        ],
+                        [
+                            { text: '• أوامر الميديا والبحث', callback_data: 'dev_cmd_media' },
+                            { text: '• أوامر الرفعات والرتب', callback_data: 'dev_cmd_roles' }
+                        ],
+                        [
+                            { text: '❌ إغلاق اللوحة', callback_data: 'dev_close_menu' }
+                        ]
+                    ]
+                }
+            });
+        }
+
         if (text === 'احبك' || text === 'أحبك') {
             const loveReplies = ['وانا احب ايفي', 'وانا احب توري', 'وانا بعد', 'اعشقك'];
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
@@ -590,6 +619,50 @@ bot.on('message', async (ctx, next) => {
 bot.on('callback_query', async (ctx) => {
     try {
         const data = ctx.callbackQuery.data;
+        const userId = ctx.from.id;
+        const username = ctx.from.username || '';
+
+        // حماية الأزرار بحيث لا يستطيع استخدامها إلا الديف
+        if (!isDev(username)) {
+            return ctx.answerCbQuery('• هذه الأوامر مخصصة للمطور (Dev) فقط ❌', { show_alert: true });
+        }
+
+        if (data === 'dev_cmd_protection') {
+            const msg = `🔒 *أوامر الحماية والتحكم:*\n` +
+                        `• قفل المنشن / فتح المنشن\n` +
+                        `• قفل المخالفات / فتح المخالفات\n` +
+                        `• كتم / فك الكتم / كتم عام`;
+            return ctx.answerCbQuery(msg, { show_alert: true });
+        }
+
+        if (data === 'dev_cmd_stats') {
+            const msg = `📊 *أوامر التفاعل:*\n` +
+                        `• تفاعلي (لعرض رسائلك ورتبتك)\n` +
+                        `• المتفاعلين (عرض توب 20)`;
+            return ctx.answerCbQuery(msg, { show_alert: true });
+        }
+
+        if (data === 'dev_cmd_media') {
+            const msg = `🎵 *أوامر البحث والميديا:*\n` +
+                        `• يوت [اسم الأغنية]\n` +
+                        `• بحث [الاسم]`;
+            return ctx.answerCbQuery(msg, { show_alert: true });
+        }
+
+        if (data === 'dev_cmd_roles') {
+            const msg = `🎖️ *أوامر الرتب والألقاب:*\n` +
+                        `• رفع مشرف / تنزيل مشرف\n` +
+                        `• ضع لقب [اللقب]\n` +
+                        `• رفع [الرتبة]`;
+            return ctx.answerCbQuery(msg, { show_alert: true });
+        }
+
+        if (data === 'dev_close_menu') {
+            try {
+                await ctx.deleteMessage();
+            } catch (e) {}
+            return ctx.answerCbQuery('تم إغلاق اللوحة ✓');
+        }
 
         if (data.startsWith('adm_toggle_')) {
             const parts = data.replace('adm_toggle_', '').split('_');
