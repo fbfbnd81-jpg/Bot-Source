@@ -464,7 +464,7 @@ bot.on('message', async (ctx, next) => {
                 };
 
                 const cfg = global.adminConfigSessions[targetId].rights;
-                const panelText = `• طارق\n• رفع مشرف\n\n• حدد الصلاحيات ↦`;
+                const panelText = `• رفع مشرف\n\n• حدد الصلاحيات ↦`;
 
                 return ctx.reply(panelText, {
                     reply_to_message_id: ctx.message.message_id,
