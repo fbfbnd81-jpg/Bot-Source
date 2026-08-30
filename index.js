@@ -11,8 +11,7 @@ const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
-const whispers = {}; 
-const adminMenus = {}; // لتخزين حالات الصلاحيات المؤقتة لكل لوحة تحكم مشرف
+const adminMenus = {}; 
 
 const DATA_FILE = './toraif_github_database.json';
 let db = { roles: {}, stats: {}, titles: {} };
@@ -47,10 +46,6 @@ function getUserRole(chatId, userId, username) {
 
 bot.start(async (ctx) => {
     try {
-        const userId = ctx.from.id;
-        if (global.waitingForWhisper && global.waitingForWhisper[userId]) {
-            return ctx.reply('• أرسل الآن الهمسة\n• يمكنك إرسال نص أو ملصق أو صورة أو فيديو');
-        }
         return ctx.reply('أهلاً بك في بوت تورايف! البوت يعمل بنجاح.');
     } catch (e) {}
 });
@@ -159,43 +154,39 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
-            // إذا كان الأمر رفع مشرف أو ترقية، نعرض لوحة الصلاحيات الشفافة المطلوبة
             if (text === 'رفع مشرف' || text === 'ترقية') {
-                const menuKey = `${chatId}_${targetId}_${Date.now()}`;
-                adminMenus[menuKey] = {
+                const menuId = Date.now().toString();
+                adminMenus[menuId] = {
                     chatId,
                     targetId,
                     targetName,
-                    perms: {
+                    p: {
                         change_info: false,
-                        post_messages: false,
-                        edit_messages: false,
-                        delete_messages: true, // مسح الرسائل افتراضياً نعم كما بالصورة
-                        invite_users: false,
-                        restrict_members: false,
                         pin_messages: false,
-                        promote_members: false,
-                        manage_chat: false,
-                        manage_video_chats: false
+                        restrict_members: false,
+                        invite_users: false,
+                        delete_messages: true,
+                        manage_video_chats: false,
+                        promote_members: false
                     }
                 };
 
-                const getStatusText = (val) => val ? 'نعم' : 'لا';
-                const p = adminMenus[menuKey].perms;
+                const getSt = (v) => v ? 'نعم' : 'لا';
+                const p = adminMenus[menuId].p;
 
                 return ctx.reply(`• حدد الصلاحيات ↦ [${targetName}](tg://user?id=${targetId})`, {
                     parse_mode: 'Markdown',
                     reply_to_message_id: ctx.message.message_id,
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: `• تغيير معلومات المجموعة ↦ ${getStatusText(p.change_info)}`, callback_data: `perm_toggle_${menuKey}_change_info` }],
-                            [{ text: `• تثبيت الرسائل ↦ ${getStatusText(p.pin_messages)}`, callback_data: `perm_toggle_${menuKey}_pin_messages` }],
-                            [{ text: `• حظر المستخدمين ↦ ${getStatusText(p.restrict_members)}`, callback_data: `perm_toggle_${menuKey}_restrict_members` }],
-                            [{ text: `• دعوة المستخدمين ↦ ${getStatusText(p.invite_users)}`, callback_data: `perm_toggle_${menuKey}_invite_users` }],
-                            [{ text: `• مسح الرسائل ↦ ${getStatusText(p.delete_messages)}`, callback_data: `perm_toggle_${menuKey}_delete_messages` }],
-                            [{ text: `• ادارة المكالمات ↦ ${getStatusText(p.manage_video_chats)}`, callback_data: `perm_toggle_${menuKey}_manage_video_chats` }],
-                            [{ text: `• اضافة مشرفين ↦ ${getStatusText(p.promote_members)}`, callback_data: `perm_toggle_${menuKey}_promote_members` }],
-                            [{ text: '- اخفاء الامر', callback_data: `perm_hide_${menuKey}` }]
+                            [{ text: `• تغيير معلومات المجموعة ↦ ${getSt(p.change_info)}`, callback_data: `prm_${menuId}_ci` }],
+                            [{ text: `• تثبيت الرسائل ↦ ${getSt(p.pin_messages)}`, callback_data: `prm_${menuId}_pm` }],
+                            [{ text: `• حظر المستخدمين ↦ ${getSt(p.restrict_members)}`, callback_data: `prm_${menuId}_rm` }],
+                            [{ text: `• دعوة المستخدمين ↦ ${getSt(p.invite_users)}`, callback_data: `prm_${menuId}_iu` }],
+                            [{ text: `• مسح الرسائل ↦ ${getSt(p.delete_messages)}`, callback_data: `prm_${menuId}_dm` }],
+                            [{ text: `• ادارة المكالمات ↦ ${getSt(p.manage_video_chats)}`, callback_data: `prm_${menuId}_vc` }],
+                            [{ text: `• اضافة مشرفين ↦ ${getSt(p.promote_members)}`, callback_data: `prm_${menuId}_pr` }],
+                            [{ text: '- اخفاء الامر', callback_data: `prm_${menuId}_hide` }]
                         ]
                     }
                 });
@@ -206,7 +197,7 @@ bot.on('message', async (ctx) => {
                 assignedRank = 'Dev²🎖️';
             } else if (text === 'رفع مطور اساسي') {
                 assignedRank = 'Dev🎖️';
-            } else if (text === 'ميث' || text === 'm') {
+            } else if (text === 'ميث' || text === 'م') {
                 assignedRank = 'myth';
             } else if (text === 'اكس') {
                 assignedRank = 'Myth🎖️';
@@ -295,76 +286,74 @@ bot.on('callback_query', async (ctx) => {
         const userId = ctx.from.id;
         const username = ctx.from.username || '';
 
-        if (data.startsWith('perm_')) {
+        if (data.startsWith('prm_')) {
             const parts = data.split('_');
-            // format: perm_toggle_[menuKey]_[permName] or perm_hide_[menuKey]
-            if (parts[1] === 'hide') {
-                const menuKey = parts.slice(2).join('_');
-                delete adminMenus[menuKey];
+            const menuId = parts[1];
+            const action = parts[2];
+
+            if (!adminMenus[menuId]) {
+                return ctx.answerCbQuery('انتهت صلاحية هذه القائمة.', { show_alert: true });
+            }
+
+            const menu = adminMenus[menuId];
+            const p = menu.p;
+
+            if (action === 'hide') {
+                delete adminMenus[menuId];
                 try {
                     await ctx.deleteMessage();
                 } catch (e) {}
-                return ctx.answerCbQuery('تم إخفاء الأمر ✓');
+                return ctx.answerCbQuery();
             }
 
-            if (parts[1] === 'toggle') {
-                const permName = parts[parts.length - 1];
-                const menuKey = parts.slice(2, parts.length - 1).join('_');
+            if (action === 'ci') p.change_info = !p.change_info;
+            if (action === 'pm') p.pin_messages = !p.pin_messages;
+            if (action === 'rm') p.restrict_members = !p.restrict_members;
+            if (action === 'iu') p.invite_users = !p.invite_users;
+            if (action === 'dm') p.delete_messages = !p.delete_messages;
+            if (action === 'vc') p.manage_video_chats = !p.manage_video_chats;
+            if (action === 'pr') p.promote_members = !p.promote_members;
 
-                if (!adminMenus[menuKey]) {
-                    return ctx.answerCbQuery('انتهت صلاحية هذه القائمة.', { show_alert: true });
-                }
-
-                const menuData = adminMenus[menuKey];
-                menuData.perms[permName] = !menuData.perms[permName];
-                const p = menuData.perms;
-
-                // تنفيذ الترقية الفورية في التليجرام بالصلاحيات الجديدة المحدثة
-                try {
-                    await ctx.telegram.promoteChatMember(menuData.chatId, menuData.targetId, {
-                        is_anonymous: false,
-                        can_manage_chat: p.manage_chat,
-                        can_post_messages: p.post_messages,
-                        can_edit_messages: p.edit_messages,
-                        can_delete_messages: p.delete_messages,
-                        can_manage_voice_chats: p.manage_video_chats,
-                        can_restrict_members: p.restrict_members,
-                        can_promote_members: p.promote_members,
-                        can_change_info: p.change_info,
-                        can_invite_users: p.invite_users,
-                        can_pin_messages: p.pin_messages
-                    });
-                } catch (e) {}
-
-                const getStatusText = (val) => val ? 'نعم' : 'لا';
-
-                await ctx.editMessageText(`• حدد الصلاحيات ↦ [${menuData.targetName}](tg://user?id=${menuData.targetId})`, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: `• تغيير معلومات المجموعة ↦ ${getStatusText(p.change_info)}`, callback_data: `perm_toggle_${menuKey}_change_info` }],
-                            [{ text: `• تثبيت الرسائل ↦ ${getStatusText(p.pin_messages)}`, callback_data: `perm_toggle_${menuKey}_pin_messages` }],
-                            [{ text: `• حظر المستخدمين ↦ ${getStatusText(p.restrict_members)}`, callback_data: `perm_toggle_${menuKey}_restrict_members` }],
-                            [{ text: `• دعوة المستخدمين ↦ ${getStatusText(p.invite_users)}`, callback_data: `perm_toggle_${menuKey}_invite_users` }],
-                            [{ text: `• مسح الرسائل ↦ ${getStatusText(p.delete_messages)}`, callback_data: `perm_toggle_${menuKey}_delete_messages` }],
-                            [{ text: `• ادارة المكالمات ↦ ${getStatusText(p.manage_video_chats)}`, callback_data: `perm_toggle_${menuKey}_manage_video_chats` }],
-                            [{ text: `• اضافة مشرفين ↦ ${getStatusText(p.promote_members)}`, callback_data: `perm_toggle_${menuKey}_promote_members` }],
-                            [{ text: '- اخفاء الامر', callback_data: `perm_hide_${menuKey}` }]
-                        ]
-                    }
+            try {
+                await ctx.telegram.promoteChatMember(menu.chatId, menu.targetId, {
+                    is_anonymous: false,
+                    can_manage_chat: true,
+                    can_post_messages: true,
+                    can_edit_messages: true,
+                    can_delete_messages: p.delete_messages,
+                    can_manage_voice_chats: p.manage_video_chats,
+                    can_restrict_members: p.restrict_members,
+                    can_promote_members: p.promote_members,
+                    can_change_info: p.change_info,
+                    can_invite_users: p.invite_users,
+                    can_pin_messages: p.pin_messages
                 });
-                return ctx.answerCbQuery('تم تحديث الصلاحية وتطبيقها بنجاح ✓');
-            }
+            } catch (e) {}
+
+            const getSt = (v) => v ? 'نعم' : 'لا';
+
+            await ctx.editMessageText(`• حدد الصلاحيات ↦ [${menu.targetName}](tg://user?id=${menu.targetId})`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `• تغيير معلومات المجموعة ↦ ${getSt(p.change_info)}`, callback_data: `prm_${menuId}_ci` }],
+                        [{ text: `• تثبيت الرسائل ↦ ${getSt(p.pin_messages)}`, callback_data: `prm_${menuId}_pm` }],
+                        [{ text: `• حظر المستخدمين ↦ ${getSt(p.restrict_members)}`, callback_data: `prm_${menuId}_rm` }],
+                        [{ text: `• دعوة المستخدمين ↦ ${getSt(p.invite_users)}`, callback_data: `prm_${menuId}_iu` }],
+                        [{ text: `• مسح الرسائل ↦ ${getSt(p.delete_messages)}`, callback_data: `prm_${menuId}_dm` }],
+                        [{ text: `• ادارة المكالمات ↦ ${getSt(p.manage_video_chats)}`, callback_data: `prm_${menuId}_vc` }],
+                        [{ text: `• اضافة مشرفين ↦ ${getSt(p.promote_members)}`, callback_data: `prm_${menuId}_pr` }],
+                        [{ text: '- اخفاء الامر', callback_data: `prm_${menuId}_hide` }]
+                    ]
+                }
+            });
+            return ctx.answerCbQuery('تم التحديث ✓');
         }
 
         if (!isDev(userId, username)) {
             return ctx.answerCbQuery('• هذه الأوامر مخصصة للمطور (Dev) فقط ❌', { show_alert: true });
         }
 
-        if (data === 'dev_cmd_protection') return ctx.answerCbQuery('🔒 أوامر الحماية والتحكم.', { show_alert: true });
-        if (data === 'dev_cmd_stats') return ctx.answerCbQuery('📊 أوامر التفاعل والأعضاء.', { show_alert: true });
-        if (data === 'dev_cmd_media') return ctx.answerCbQuery('🎵 أوامر الميديا والبحث.', { show_alert: true });
-        if (data === 'dev_cmd_roles') return ctx.answerCbQuery('🎖️ أوامر الرفعات والرتب.', { show_alert: true });
         if (data === 'dev_close_menu') {
             try { await ctx.deleteMessage(); } catch (e) {}
             return ctx.answerCbQuery('تم إغلاق اللوحة ✓');
