@@ -190,7 +190,7 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ↦ ｢ ${role} ｣${customTitle}`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        const isActionCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'تنزيل مشرف', 'تنزيل الكل'].includes(text) || text.startsWith('رفع ');
+        const isActionCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'تنزيل مشرف', 'تنزيل الكل', 'مميز', 'مالك'].includes(text) || text.startsWith('رفع ') || text === 'ديف' || text === 'ميث' || text === 'م' || text === 'اكس' || text === 'مالك اساسي' || text === 'اساس';
 
         if (isActionCommand) {
             if (!ctx.message.reply_to_message) {
@@ -200,6 +200,42 @@ bot.on('message', async (ctx) => {
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
+
+            let assignedRank = '';
+            const lowerText = text.toLowerCase();
+
+            if (text === 'ديف' || text === 'رفع ديف') {
+                assignedRank = 'Dev²🎖️';
+            } else if (text === 'رفع مطور اساسي') {
+                assignedRank = 'Dev🎖️';
+            } else if (text === 'ميث' || text === 'م') {
+                assignedRank = 'myth';
+            } else if (text === 'اكس') {
+                assignedRank = 'Myth🎖️';
+            } else if (text === 'مميز') {
+                assignedRank = 'مميز';
+            } else if (text === 'مالك') {
+                assignedRank = 'مالك';
+            } else if (text === 'مالك اساسي' || text === 'اساس') {
+                assignedRank = 'مالك اساسي';
+            } else if (text.startsWith('رفع ')) {
+                const sub = text.replace('رفع ', '').trim().toLowerCase();
+                if (sub === 'ديف') assignedRank = 'Dev²🎖️';
+                else if (sub === 'مطور اساسي') assignedRank = 'Dev🎖️';
+                else if (sub === 'ميث' || sub === 'م') assignedRank = 'myth';
+                else if (sub === 'اكس') assignedRank = 'Myth🎖️';
+                else if (sub === 'مميز') assignedRank = 'مميز';
+                else if (sub === 'مالك') assignedRank = 'مالك';
+                else if (sub === 'مالك اساسي' || sub === 'اساس') assignedRank = 'مالك اساسي';
+                else assignedRank = text.replace('رفع ', '').trim();
+            }
+
+            if (assignedRank) {
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = assignedRank;
+                saveData();
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه رتبة: [ ${assignedRank} ] ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
 
             if (text === 'رفع مشرف') {
                 if (!db.roles[chatId]) db.roles[chatId] = {};
@@ -231,14 +267,6 @@ bot.on('message', async (ctx) => {
                 db.roles[chatId][targetId] = 'عضو';
                 saveData();
                 return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم إرجاعه ( عضو ) ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
-            }
-
-            if (text.startsWith('رفع ')) {
-                const requestedRank = text.replace('رفع ', '').trim();
-                if (!db.roles[chatId]) db.roles[chatId] = {};
-                db.roles[chatId][targetId] = requestedRank;
-                saveData();
-                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه رتبة: [ ${requestedRank} ] ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
         }
 
