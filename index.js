@@ -11,7 +11,6 @@ const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
 const mutedUsers = {};       
 const globalMutedUsers = {}; 
-const groupSettings = {}; 
 const whispers = {}; 
 
 const DATA_FILE = './toraif_github_database.json';
@@ -110,7 +109,6 @@ bot.on('message', async (ctx) => {
             return;
         }
 
-        // لوحة الأوامر (للمطور فقط)
         if (['الأوامر', 'الاوامر', 'الخدمات', 'مساعدة', '/help'].includes(text)) {
             if (!isTheDevOne) {
                 return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ فقط ❌', { reply_to_message_id: ctx.message.message_id });
@@ -157,7 +155,6 @@ bot.on('message', async (ctx) => {
             saveData();
         }
 
-        // تفاعلي والمتفاعلين ورتبتي (تعمل للجميع بدون استثناء)
         if (text === 'تفاعلي') {
             if (ctx.chat.type === 'private') return;
             const chatStats = db.stats[chatId] || {};
@@ -193,7 +190,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• رتبتك هي ↦ ｢ ${role} ｣${customTitle}`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر الرفع، الكتم، المشرفين وغيرها (تعمل للجميع بالرد)
         const isActionCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'تنزيل مشرف', 'تنزيل الكل'].includes(text) || text.startsWith('رفع ');
 
         if (isActionCommand) {
@@ -206,41 +202,17 @@ bot.on('message', async (ctx) => {
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
             if (text === 'رفع مشرف') {
-                try {
-                    await ctx.promoteChatMember(targetId, {
-                        is_anonymous: false,
-                        can_manage_chat: true,
-                        can_delete_messages: true,
-                        can_manage_video_chats: false,
-                        can_restrict_members: false,
-                        can_promote_members: false,
-                        can_change_info: false,
-                        can_invite_users: true,
-                        can_pin_messages: true
-                    });
-                    if (!db.roles[chatId]) db.roles[chatId] = {};
-                    db.roles[chatId][targetId] = 'مشرف';
-                    saveData();
-                    return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه مشرف بنجاح ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
-                } catch (err) {
-                    return ctx.reply('فشل رفع المشرف، تأكد أن البوت يملك صلاحية (إضافة مشرفين جدد) في المجموعة.', { reply_to_message_id: ctx.message.message_id });
-                }
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = 'مشرف';
+                saveData();
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه مشرف بنجاح ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'تنزيل مشرف') {
-                try {
-                    await ctx.promoteChatMember(targetId, {
-                        is_anonymous: false, can_manage_chat: false, can_delete_messages: false,
-                        can_manage_video_chats: false, can_restrict_members: false, can_promote_members: false,
-                        can_change_info: false, can_invite_users: false, can_pin_messages: false
-                    });
-                    if (!db.roles[chatId]) db.roles[chatId] = {};
-                    db.roles[chatId][targetId] = 'عضو';
-                    saveData();
-                    return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم تنزيله من الإشراف ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
-                } catch (err) {
-                    return ctx.reply('فشل في إزالة الإشراف.', { reply_to_message_id: ctx.message.message_id });
-                }
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = 'عضو';
+                saveData();
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم تنزيله من الإشراف ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'كتم' || text === 'تقييد') {
@@ -258,4 +230,51 @@ bot.on('message', async (ctx) => {
                 if (!db.roles[chatId]) db.roles[chatId] = {};
                 db.roles[chatId][targetId] = 'عضو';
                 saveData();
-                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم إرجاعه ( عضو ) ✓`, { parse_mode: 'Markdown',
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم إرجاعه ( عضو ) ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text.startsWith('رفع ')) {
+                const requestedRank = text.replace('رفع ', '').trim();
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = requestedRank;
+                saveData();
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه رتبة: [ ${requestedRank} ] ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
+        if (text === 'توري') return ctx.reply('• توري ↦ @to6ri', { reply_to_message_id: ctx.message.message_id });
+        if (text === 'ايفي' || text === 'ايلاف') return ctx.reply('• المطور ↦ @j4xa7', { reply_to_message_id: ctx.message.message_id });
+        if (text === 'تورايف') {
+            const replies = ['عيوني', 'أمر؟', 'سم', 'عيون ايفي وتوري', 'هلا'];
+            return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
+        }
+
+    } catch (e) {
+        console.error("Error:", e);
+    }
+});
+
+bot.on('callback_query', async (ctx) => {
+    try {
+        const data = ctx.callbackQuery.data;
+        const userId = ctx.from.id;
+        const username = ctx.from.username || '';
+
+        if (!isDev(userId, username)) {
+            return ctx.answerCbQuery('• هذه الأوامر مخصصة للمطور (Dev) فقط ❌', { show_alert: true });
+        }
+
+        if (data === 'dev_cmd_protection') return ctx.answerCbQuery('🔒 أوامر الحماية والتحكم.', { show_alert: true });
+        if (data === 'dev_cmd_stats') return ctx.answerCbQuery('📊 أوامر التفاعل والأعضاء.', { show_alert: true });
+        if (data === 'dev_cmd_media') return ctx.answerCbQuery('🎵 أوامر الميديا والبحث.', { show_alert: true });
+        if (data === 'dev_cmd_roles') return ctx.answerCbQuery('🎖️ أوامر الرفعات والرتب.', { show_alert: true });
+        if (data === 'dev_close_menu') {
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.answerCbQuery('تم إغلاق اللوحة ✓');
+        }
+    } catch (e) {}
+});
+
+bot.launch();
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
