@@ -2,7 +2,6 @@ const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
 
-// تشغيل سيرفر ويب لكي لا يتوقف البوت على منصات الاستضافة
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Toraif Bot is active!');
@@ -122,7 +121,7 @@ bot.on('message', async (ctx) => {
             return;
         }
 
-        // الأوامر (تظهر اللوحة للمطور فقط، وباقي الأوامر ترد على الكل)
+        // لوحة الأوامر (للمطور فقط)
         if (['الأوامر', 'الاوامر', 'الخدمات', 'مساعدة', '/help'].includes(text)) {
             if (!isTheDevOne) {
                 return ctx.reply('• هذا الأمر مخصص لـ ｢ Dev 🎖 ｣ فقط ❌', { reply_to_message_id: ctx.message.message_id });
@@ -169,28 +168,7 @@ bot.on('message', async (ctx) => {
             saveData();
         }
 
-        if (['همسه', 'اهمس', 'ه'].includes(text)) {
-            if (!ctx.message.reply_to_message) {
-                return ctx.reply('يرجى الرد على الشخص الذي تريد أهمسته.', { reply_to_message_id: ctx.message.message_id });
-            }
-            const targetUser = ctx.message.reply_to_message.from;
-            const targetId = targetUser.id;
-            const targetName = targetUser.first_name || 'المستخدم';
-            const replyMessageId = ctx.message.reply_to_message.message_id;
-            const botUsername = ctx.botInfo ? ctx.botInfo.username : 'Toraif_bot';
-
-            if (!global.waitingForWhisper) global.waitingForWhisper = {};
-            global.waitingForWhisper[userId] = { targetChatId: chatId, targetId, targetName, replyMessageId };
-
-            return ctx.reply(`• تم تحديد الهمسه ↦ [${targetName}](tg://user?id=${targetId})\n• اضغط الزر لكتابة الهمسة`, {
-                parse_mode: 'Markdown',
-                reply_to_message_id: ctx.message.message_id,
-                reply_markup: {
-                    inline_keyboard: [[{ text: 'اهمس هنا ↗', url: `https://t.me/${botUsername}?start=whisper` }]]
-                }
-            });
-        }
-
+        // تفاعلي والمتفاعلين ورتبتي
         if (text === 'تفاعلي') {
             if (ctx.chat.type === 'private') return;
             const chatStats = db.stats[chatId] || {};
@@ -209,35 +187,4 @@ bot.on('message', async (ctx) => {
             const sortedUsers = Object.entries(chatStats).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
 
             if (sortedUsers.length === 0) {
-                return ctx.reply('لا يوجد أعضاء مسجلين بالتفاعل بعد.', { reply_to_message_id: ctx.message.message_id });
-            }
-
-            let topText = 'توب اكثر 20 متفاعلين بالقروب :\n______________________\n\n';
-            sortedUsers.forEach(([id, data], index) => {
-                let prefix = index === 0 ? '🥇 )' : index === 1 ? '🥈 )' : index === 2 ? '🥉 )' : `${index + 1} )`;
-                const title = (db.titles[chatId] && db.titles[chatId][id]) ? ` [${db.titles[chatId][id]}]` : '';
-                topText += `${prefix} ${data.count} | [${data.name || 'عضو'}](tg://user?id=${id})${title}\n`;
-            });
-            return ctx.reply(topText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'رتبتي' || text === '/رتبتي') {
-            const customTitle = (db.titles[chatId] && db.titles[chatId][userId]) ? ` [${db.titles[chatId][userId]}]` : '';
-            return ctx.reply(`• رتبتك هي ↦ ｢ ${role} ｣${customTitle}`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text === 'توري') return ctx.reply('• توري ↦ @to6ri', { reply_to_message_id: ctx.message.message_id });
-        if (text === 'ايفي' || text === 'ايلاف') return ctx.reply('• المطور ↦ @j4xa7', { reply_to_message_id: ctx.message.message_id });
-        if (text === 'تورايف') {
-            const replies = ['عيوني', 'أمر؟', 'سم', 'عيون ايفي وتوري', 'هلا'];
-            return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
-        }
-
-    } catch (e) {
-        console.error("Error in bot message handler:", e);
-    }
-});
-
-bot.launch();
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+                return ctx.reply('لا يوجد أعضاء مسجلين بالتفاعل بعد.', { reply_to_message
