@@ -45,15 +45,6 @@ function getUserRole(chatId, userId, username) {
     return 'عضو';
 }
 
-const roleHierarchy = {
-    'عضو': 0, 'مميز': 1, 'مشرف': 2, 'مالك': 3, 'مالك اساسي': 4,
-    'myth': 5, 'Myth🎖️': 6, 'Dev²🎖': 7, 'Dev🎖️': 8, 'Dev1_Super': 9
-};
-
-function hasPermission(userRole, requiredRole) {
-    return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0);
-}
-
 bot.start(async (ctx) => {
     try {
         const userId = ctx.from.id;
@@ -74,8 +65,6 @@ bot.on('message', async (ctx) => {
         const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
         const role = getUserRole(chatId, userId, username);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
-        const isEdited = !!ctx.update.edited_message;
-        const mention = `[${name}](tg://user?id=${userId})`;
         const isTheDevOne = isDev(userId, username);
 
         if (ctx.chat.type === 'private') {
@@ -168,7 +157,7 @@ bot.on('message', async (ctx) => {
             saveData();
         }
 
-        // تفاعلي والمتفاعلين ورتبتي
+        // تفاعلي والمتفاعلين ورتبتي (تعمل للجميع بدون استثناء)
         if (text === 'تفاعلي') {
             if (ctx.chat.type === 'private') return;
             const chatStats = db.stats[chatId] || {};
@@ -187,4 +176,86 @@ bot.on('message', async (ctx) => {
             const sortedUsers = Object.entries(chatStats).sort((a, b) => b[1].count - a[1].count).slice(0, 20);
 
             if (sortedUsers.length === 0) {
-                return ctx.reply('لا يوجد أعضاء مسجلين بالتفاعل بعد.', { reply_to_message
+                return ctx.reply('لا يوجد أعضاء مسجلين بالتفاعل بعد.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            let topText = 'توب اكثر 20 متفاعلين بالقروب :\n______________________\n\n';
+            sortedUsers.forEach(([id, data], index) => {
+                let prefix = index === 0 ? '🥇 )' : index === 1 ? '🥈 )' : index === 2 ? '🥉 )' : `${index + 1} )`;
+                const title = (db.titles[chatId] && db.titles[chatId][id]) ? ` [${db.titles[chatId][id]}]` : '';
+                topText += `${prefix} ${data.count} | [${data.name || 'عضو'}](tg://user?id=${id})${title}\n`;
+            });
+            return ctx.reply(topText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'رتبتي' || text === '/رتبتي') {
+            const customTitle = (db.titles[chatId] && db.titles[chatId][userId]) ? ` [${db.titles[chatId][userId]}]` : '';
+            return ctx.reply(`• رتبتك هي ↦ ｢ ${role} ｣${customTitle}`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أوامر الرفع، الكتم، المشرفين وغيرها (تعمل للجميع بالرد)
+        const isActionCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'تنزيل مشرف', 'تنزيل الكل'].includes(text) || text.startsWith('رفع ');
+
+        if (isActionCommand) {
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+            const targetMention = `[${targetName}](tg://user?id=${targetId})`;
+
+            if (text === 'رفع مشرف') {
+                try {
+                    await ctx.promoteChatMember(targetId, {
+                        is_anonymous: false,
+                        can_manage_chat: true,
+                        can_delete_messages: true,
+                        can_manage_video_chats: false,
+                        can_restrict_members: false,
+                        can_promote_members: false,
+                        can_change_info: false,
+                        can_invite_users: true,
+                        can_pin_messages: true
+                    });
+                    if (!db.roles[chatId]) db.roles[chatId] = {};
+                    db.roles[chatId][targetId] = 'مشرف';
+                    saveData();
+                    return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم رفعه مشرف بنجاح ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                } catch (err) {
+                    return ctx.reply('فشل رفع المشرف، تأكد أن البوت يملك صلاحية (إضافة مشرفين جدد) في المجموعة.', { reply_to_message_id: ctx.message.message_id });
+                }
+            }
+
+            if (text === 'تنزيل مشرف') {
+                try {
+                    await ctx.promoteChatMember(targetId, {
+                        is_anonymous: false, can_manage_chat: false, can_delete_messages: false,
+                        can_manage_video_chats: false, can_restrict_members: false, can_promote_members: false,
+                        can_change_info: false, can_invite_users: false, can_pin_messages: false
+                    });
+                    if (!db.roles[chatId]) db.roles[chatId] = {};
+                    db.roles[chatId][targetId] = 'عضو';
+                    saveData();
+                    return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم تنزيله من الإشراف ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                } catch (err) {
+                    return ctx.reply('فشل في إزالة الإشراف.', { reply_to_message_id: ctx.message.message_id });
+                }
+            }
+
+            if (text === 'كتم' || text === 'تقييد') {
+                if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
+                mutedUsers[chatId][targetId] = true;
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم كتمه/تقييده ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'فك الكتم' || text === 'فك التقييد' || text === 'الغاء التقييد' || text === 'رفع القيود') {
+                if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم فك الكتم عنه ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'تنزيل الكل') {
+                if (!db.roles[chatId]) db.roles[chatId] = {};
+                db.roles[chatId][targetId] = 'عضو';
+                saveData();
+                return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم إرجاعه ( عضو ) ✓`, { parse_mode: 'Markdown',
