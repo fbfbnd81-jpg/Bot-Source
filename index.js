@@ -9,12 +9,10 @@ http.createServer((req, res) => {
 
 const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
-const mutedUsers = {};       
-const globalMutedUsers = {}; 
 const adminMenus = {}; 
 
 const DATA_FILE = './toraif_github_database.json';
-let db = { roles: {}, stats: {}, titles: {} };
+let db = { roles: {}, stats: {}, titles: {}, muted: {} };
 
 if (fs.existsSync(DATA_FILE)) {
     try {
@@ -22,6 +20,7 @@ if (fs.existsSync(DATA_FILE)) {
         if (!db.roles) db.roles = {};
         if (!db.stats) db.stats = {};
         if (!db.titles) db.titles = {};
+        if (!db.muted) db.muted = {};
     } catch (e) {}
 }
 
@@ -44,6 +43,12 @@ function getUserRole(chatId, userId, username) {
     return 'عضو';
 }
 
+function checkAdminPermission(chatId, userId, username) {
+    if (isDev(userId, username)) return true;
+    const role = getUserRole(chatId, userId, username);
+    return ['Dev🎖️', 'Dev²🎖️', 'myth', 'Myth🎖️', 'مميز', 'مالك', 'مالك اساسي'].includes(role);
+}
+
 bot.start(async (ctx) => {
     try {
         return ctx.reply('أهلاً بك في بوت تورايف! البوت يعمل بنجاح.');
@@ -63,6 +68,17 @@ bot.on('message', async (ctx) => {
         const isTheDevOne = isDev(userId, username);
 
         if (ctx.chat.type === 'private') return;
+
+        if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
+            if (db.muted[chatId] && db.muted[chatId][userId]) {
+                try { await ctx.deleteMessage(); } catch (e) {}
+                return; 
+            }
+        }
+
+        if (text) {
+            await ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
+        }
 
         if (['الأوامر', 'الاوامر', 'الخدمات', 'مساعدة', '/help'].includes(text)) {
             if (!isTheDevOne) {
@@ -90,13 +106,6 @@ bot.on('message', async (ctx) => {
         if (text === 'احبك' || text === 'أحبك') {
             const loveReplies = ['وانا احب ايفي', 'وانا احب توري', 'وانا بعد', 'اعشقك'];
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
-            if ((mutedUsers[chatId] && mutedUsers[chatId][userId]) || globalMutedUsers[userId]) {
-                try { await ctx.deleteMessage(); } catch (e) {}
-                return; 
-            }
         }
 
         if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
@@ -146,6 +155,10 @@ bot.on('message', async (ctx) => {
         const isActionCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'ترقية', 'تنزيل مشرف', 'تنزيل الكل', 'مميز', 'مالك'].includes(text) || text.startsWith('رفع ') || text === 'ديف' || text === 'ميث' || text === 'م' || text === 'اكس' || text === 'مالك اساسي' || text === 'اساس';
 
         if (isActionCommand) {
+            if (!checkAdminPermission(chatId, userId, username)) {
+                return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا فقط ❌', { reply_to_message_id: ctx.message.message_id });
+            }
+
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
             }
@@ -153,6 +166,10 @@ bot.on('message', async (ctx) => {
             const targetId = targetUser.id;
             const targetName = targetUser.first_name || 'المستخدم';
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
+
+            if (targetId === userId && !isTheDevOne) {
+                return ctx.reply('• لا يمكنك تنفيذ هذا الأمر على نفسك ❌', { reply_to_message_id: ctx.message.message_id });
+            }
 
             if (text === 'رفع مشرف' || text === 'ترقية') {
                 const menuId = Date.now().toString();
@@ -250,13 +267,15 @@ bot.on('message', async (ctx) => {
             }
 
             if (text === 'كتم' || text === 'تقييد') {
-                if (!mutedUsers[chatId]) mutedUsers[chatId] = {};
-                mutedUsers[chatId][targetId] = true;
+                if (!db.muted[chatId]) db.muted[chatId] = {};
+                db.muted[chatId][targetId] = true;
+                saveData();
                 return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم كتمه/تقييده ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'فك الكتم' || text === 'فك التقييد' || text === 'الغاء التقييد' || text === 'رفع القيود') {
-                if (mutedUsers[chatId]) delete mutedUsers[chatId][targetId];
+                if (db.muted[chatId]) delete db.muted[chatId][targetId];
+                saveData();
                 return ctx.reply(`• المستخدم ↦ ${targetMention}\n• تم فك الكتم عنه ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
