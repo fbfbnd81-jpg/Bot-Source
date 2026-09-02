@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = require('http');
+const http = http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -76,8 +76,14 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        if (text) {
-            await ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
+        const isExplicitCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'ترقية', 'تنزيل مشرف', 'تنزيل الكل', 'مميز', 'مالك', 'طرد', 'حظر', 'اهمس'].includes(text) || text.startsWith('رفع ') || text === 'ديف' || text === 'ميث' || text === 'م' || text === 'اكس' || text === 'مالك اساسي' || text === 'اساس';
+
+        const isReplyToBot = ctx.message.reply_to_message && ctx.message.reply_to_message.from && ctx.message.reply_to_message.from.is_bot;
+
+        if (isExplicitCommand || isReplyToBot) {
+            if (text) {
+                await ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
+            }
         }
 
         if (['الأوامر', 'الاوامر', 'الخدمات', 'مساعدة', '/help'].includes(text)) {
@@ -120,14 +126,26 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'تفاعلي') {
+            let targetId = userId;
+            let targetRole = role;
+            let targetName = name;
+            let targetUsername = username;
+
+            if (ctx.message.reply_to_message && ctx.message.reply_to_message.from) {
+                targetId = ctx.message.reply_to_message.from.id;
+                targetUsername = ctx.message.reply_to_message.from.username || '';
+                targetName = ctx.message.reply_to_message.from.first_name || 'المستخدم';
+                targetRole = getUserRole(chatId, targetId, targetUsername);
+            }
+
             const chatStats = db.stats[chatId] || {};
             const sortedUsers = Object.entries(chatStats).sort((a, b) => b[1].count - a[1].count);
-            const userIndex = sortedUsers.findIndex(([id]) => id == userId);
+            const userIndex = sortedUsers.findIndex(([id]) => id == targetId);
             const rankNumber = userIndex !== -1 ? userIndex + 1 : 'خارج القائمة';
-            const msgCount = chatStats[userId] ? chatStats[userId].count : 0;
-            const customTitle = (db.titles[chatId] && db.titles[chatId][userId]) ? ` | ${db.titles[chatId][userId]}` : '';
+            const msgCount = chatStats[targetId] ? chatStats[targetId].count : 0;
+            const customTitle = (db.titles[chatId] && db.titles[chatId][targetId]) ? ` | ${db.titles[chatId][targetId]}` : '';
             
-            return ctx.reply(`• رتبتك هي ↦ ${role}${customTitle}\n\n• رسايلك بالتفاعل ↦ ${msgCount}\n• ترتيبك بالممتفاعلين ↦ ${rankNumber}\n-`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• معلومات المستخدم: [${targetName}](tg://user?id=${targetId})\n• رتبته هي ↦ ${targetRole}${customTitle}\n\n• رسايلك بالتفاعل ↦ ${msgCount}\n• ترتيبك بالممتفاعلين ↦ ${rankNumber}\n-`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'المتفاعلين') {
@@ -148,13 +166,21 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'رتبتي' || text === '/رتبتي') {
-            const customTitle = (db.titles[chatId] && db.titles[chatId][userId]) ? ` [${db.titles[chatId][userId]}]` : '';
-            return ctx.reply(`• رتبتك هي ↦ ｢ ${role} ｣${customTitle}`, { reply_to_message_id: ctx.message.message_id });
+            let targetId = userId;
+            let targetRole = role;
+            let targetUsername = username;
+
+            if (ctx.message.reply_to_message && ctx.message.reply_to_message.from) {
+                targetId = ctx.message.reply_to_message.from.id;
+                targetUsername = ctx.message.reply_to_message.from.username || '';
+                targetRole = getUserRole(chatId, targetId, targetUsername);
+            }
+
+            const customTitle = (db.titles[chatId] && db.titles[chatId][targetId]) ? ` [${db.titles[chatId][targetId]}]` : '';
+            return ctx.reply(`• الرتبة ↦ ｢ ${targetRole} ｣${customTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        const isActionCommand = ['كتم', 'كتم عام', 'تقييد', 'فك التقييد', 'الغاء التقييد', 'رفع القيود', 'فك الكتم', 'فك الكتم العام', 'رفع مشرف', 'ترقية', 'تنزيل مشرف', 'تنزيل الكل', 'مميز', 'مالك'].includes(text) || text.startsWith('رفع ') || text === 'ديف' || text === 'ميث' || text === 'م' || text === 'اكس' || text === 'مالك اساسي' || text === 'اساس';
-
-        if (isActionCommand) {
+        if (isExplicitCommand) {
             if (!checkAdminPermission(chatId, userId, username)) {
                 return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا فقط ❌', { reply_to_message_id: ctx.message.message_id });
             }
