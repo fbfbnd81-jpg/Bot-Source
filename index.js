@@ -156,6 +156,7 @@ bot.on('message', async (ctx) => {
                     senderName: name,
                     targetId: whInfo.targetId,
                     targetName: whInfo.targetName,
+                    chatId: whInfo.chatId, // حفظ معرف القروب بشكل أساسي هنا
                     content: contentData,
                     seen: false
                 };
@@ -196,15 +197,18 @@ bot.on('message', async (ctx) => {
 
                 if (!db.whispers) db.whispers = {};
                 
-                const originalWhisper = Object.values(db.whispers).find(w => w.targetId.toString() === userId.toString());
-                const originalSenderId = originalWhisper ? originalWhisper.senderId : repInfo.senderId;
-                const originalSenderName = originalWhisper ? originalWhisper.senderName : 'المستخدم';
+                const originalWhisper = Object.values(db.whispers).find(w => w.targetId.toString() === userId.toString() || w.senderId.toString() === userId.toString());
+                const targetChatId = repInfo.chatId || (originalWhisper ? originalWhisper.chatId : null);
+                
+                const originalSenderId = originalWhisper ? (originalWhisper.senderId.toString() === userId.toString() ? originalWhisper.targetId : originalWhisper.senderId) : repInfo.senderId;
+                const originalSenderName = originalWhisper ? (originalWhisper.senderId.toString() === userId.toString() ? originalWhisper.targetName : originalWhisper.senderName) : 'المستخدم';
 
                 db.whispers[wId] = {
                     senderId: userId,
                     senderName: name,
                     targetId: originalSenderId,
                     targetName: originalSenderName,
+                    chatId: targetChatId,
                     content: contentData,
                     seen: false
                 };
@@ -213,16 +217,18 @@ bot.on('message', async (ctx) => {
 
                 const botInfo = await ctx.telegram.getMe();
                 
-                await ctx.telegram.sendMessage(repInfo.chatId, 
-                    `• ياحلو ↤ [${originalSenderName}](tg://user?id=${originalSenderId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: 'رؤية الهمسه', callback_data: `wh_view_${wId}` }],
-                            [{ text: 'رد على الهمسه', url: `https://t.me/${botInfo.username}?start=start_reply_${wId}` }]
-                        ]
-                    }
-                });
+                if (targetChatId) {
+                    await ctx.telegram.sendMessage(targetChatId, 
+                        `• ياحلو ↤ [${originalSenderName}](tg://user?id=${originalSenderId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'رؤية الهمسه', callback_data: `wh_view_${wId}` }],
+                                [{ text: 'رد على الهمسه', url: `https://t.me/${botInfo.username}?start=start_reply_${wId}` }]
+                            ]
+                        }
+                    });
+                }
 
                 return ctx.reply('• تم ارسال الرد كهمسة في القروب بنجاح ✓');
             }
