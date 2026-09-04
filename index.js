@@ -19,7 +19,9 @@ let db = {
     adminMenus: {}, 
     whispers: {}, 
     pendingWhispers: {},
-    pendingReplies: {} 
+    pendingReplies: {},
+    money: {},
+    activeGames: {}
 };
 
 if (fs.existsSync(DATA_FILE)) {
@@ -34,6 +36,8 @@ if (fs.existsSync(DATA_FILE)) {
         if (fileData.whispers) db.whispers = fileData.whispers;
         if (fileData.pendingWhispers) db.pendingWhispers = fileData.pendingWhispers;
         if (fileData.pendingReplies) db.pendingReplies = fileData.pendingReplies;
+        if (fileData.money) db.money = fileData.money;
+        if (fileData.activeGames) db.activeGames = fileData.activeGames;
     } catch (e) {}
 }
 
@@ -117,7 +121,7 @@ bot.start(async (ctx) => {
             reply_markup: {
                 inline_keyboard: [
                     [{ text: '➕ أضفني في مجموعتك', url: `https://t.me/${botUsername}?startgroup=true` }],
-                    [{ text: '👤 المطور', url: 'https://t.me/j4xa7' }]
+                    [{ text: '🎖️ المطور', url: 'https://t.me/j4xa7' }]
                 ]
             }
         });
@@ -258,8 +262,65 @@ bot.on('message', async (ctx) => {
             }
         }
 
+        // --- نظام الألعاب والتفاعل الحقيقي ---
+        if (db.activeGames && db.activeGames[chatId]) {
+            const game = db.activeGames[chatId];
+            const timeElapsed = ((Date.now() - game.startTime) / 1000).toFixed(1);
+
+            if (text === game.answer) {
+                delete db.activeGames[chatId];
+                if (!db.money) db.money = {};
+                if (!db.money[userId]) db.money[userId] = 0;
+                db.money[userId] += 10;
+                saveData();
+
+                return ctx.reply(`صح عليك! 👏\nالمستخدم: [${name}](tg://user?id=${userId})\nالوقت المستغرق: ${timeElapsed} ثانية\nالسرعة ممتازة!\nتم إضافة 10 ريال وهمية لرصيدك. رصيدك الحالي: ${db.money[userId]} ريال`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            } else {
+                // إذا كتب خطأ أثناء اللعبة النشطة
+                return ctx.reply(`خطأ! الإجابة غير صحيحة، حاول مجدداً.`, { reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
         if (text === 'تورايف') {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // --- أوامر الألعاب الفورية الحقيقية ---
+        if (text === 'احزر' || text === 'لغز' || text === 'سؤال') {
+            const questions = [
+                { q: 'ما هو الشيء الذي أبيض من السُّكر وأسود من الفحم؟', a: 'القرآن' },
+                { q: 'ما هو البيت الذي ليس فيه أبواب ولا نوافذ؟', a: 'بيت الشعر' },
+                { q: 'من هو الحيوان الذي يحك أذنه بأنفه؟', a: 'الفيل' }
+            ];
+            const randomQ = questions[Math.floor(Math.random() * questions.length)];
+            
+            if (!db.activeGames) db.activeGames = {};
+            db.activeGames[chatId] = {
+                answer: randomQ.a,
+                startTime: Date.now()
+            };
+            saveData();
+
+            return ctx.reply(`• سؤال / لغز جديد:\n${randomQ.q}\n\n• أجب بالكلمة الصحيحة بأسرع وقت لتربح 10 ريال وهمية!`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'سرعة' || text === 'أسرع') {
+            const words = ['برمجة', 'تيليجرام', 'تورايف', 'تطوير', 'تفاعل'];
+            const randomWord = words[Math.floor(Math.random() * words.length)];
+
+            if (!db.activeGames) db.activeGames = {};
+            db.activeGames[chatId] = {
+                answer: randomWord,
+                startTime: Date.now()
+            };
+            saveData();
+
+            return ctx.reply(`• تحدي السرعة! ارتب أو اكتب الكلمة التالية بأسرع وقت:\n\n💬 **${randomWord}**`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text === 'فلوسي' || text === 'رصيدي') {
+            const userMoney = (db.money && db.money[userId]) ? db.money[userId] : 0;
+            return ctx.reply(`• رصيدك الوهمي الحالي هو: ${userMoney} ريال`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'الاوامر' || text === 'الأوامر' || text === 'اوامر' || text === 'أوامر' || text === 'مساعدة' || text === 'الخدمات') {
@@ -268,15 +329,15 @@ bot.on('message', async (ctx) => {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '🎮 التفاعل والتسلية', callback_data: 'help_games' },
-                            { text: '👥 الأعضاء', callback_data: 'help_members' }
+                            { text: 'التفاعل والتسلية', callback_data: 'help_games' },
+                            { text: 'الأعضاء', callback_data: 'help_members' }
                         ],
                         [
-                            { text: '🛡️ الحماية والإدارة', callback_data: 'help_protection' },
-                            { text: '🎵 الأغاني والمكالمة', callback_data: 'help_music' }
+                            { text: 'الحماية والإدارة', callback_data: 'help_protection' },
+                            { text: 'الأغاني والمكالمة', callback_data: 'help_music' }
                         ],
                         [
-                            { text: '🤖 البوت', callback_data: 'help_bot' },
+                            { text: 'البوت', callback_data: 'help_bot' },
                             { text: '🎖️ المطور', callback_data: 'help_dev' }
                         ]
                     ]
@@ -415,16 +476,16 @@ bot.on('message', async (ctx) => {
             const userStats = (db.stats[chatId][targetId]) ? db.stats[chatId][targetId].count : 0;
             const finalRank = userRank > 0 ? userRank : (sortedUsers.length + 1);
 
-            const replyMsg = `• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🎖️ رتبتك هي ↤ ${targetRole}\n• رسائلك بالتفاعل ↤ ${userStats}\n• ترتيبك بالممتفاعلين ↤ ${finalRank}\n-`;
+            const replyMsg = `• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\nرتبتك هي ↤ ${targetRole}\n• رسائلك بالتفاعل ↤ ${userStats}\n• ترتيبك بالممتفاعلين ↤ ${finalRank}\n-`;
             return ctx.reply(replyMsg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'رتبته' || text === 'رتبتي') {
-            return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🎖️ رتبته ↤ ${targetRole}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\nرتبته ↤ ${targetRole}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'لقبه' || text === 'لقبي') {
-            return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🏷️ لقبه ↤ ${targetTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\nلقبه ↤ ${targetTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'المتفاعلين' || text === 'المتفاعلير' || text === 'توب') {
@@ -440,9 +501,9 @@ bot.on('message', async (ctx) => {
             
             sortedUsers.forEach(([uId, data], index) => {
                 let medal = `${index + 1} )`;
-                if (index === 0) medal = '🥇 )';
-                else if (index === 1) medal = '🥈 )';
-                else if (index === 2) medal = '🥉 )';
+                if (index === 0) medal = '1 )';
+                else if (index === 1) medal = '2 )';
+                else if (index === 2) medal = '3 )';
 
                 listText += `${medal} ${data.count} | [${data.name}](tg://user?id=${uId})\n`;
             });
@@ -473,7 +534,7 @@ bot.on('callback_query', async (ctx) => {
                 return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
             }
             const c = wh.content;
-            let alertText = c.type === 'sticker' ? '📁 محتوى الهمسة: [ملصق]' : (c.type === 'photo' ? (c.caption ? `📸 ${c.caption}` : '📸 محتوى الهمسة: [صورة]') : (c.type === 'animation' ? (c.caption ? `🎥 ${c.caption}` : '🎥 محتوى الهمسة: [تحريك/GIF]') : c.value));
+            let alertText = c.type === 'sticker' ? 'محتوى الهمسة: ملصق' : (c.type === 'photo' ? (c.caption ? `${c.caption}` : 'محتوى الهمسة: صورة') : (c.type === 'animation' ? (c.caption ? `${c.caption}` : 'محتوى الهمسة: تحريك') : c.value));
             
             if (!wh.seen) {
                 wh.seen = true;
@@ -485,36 +546,36 @@ bot.on('callback_query', async (ctx) => {
 
         if (data.startsWith('help_')) {
             let sectionText = '';
-            let backButton = [[{ text: '🔙 العودة للقائمة الرئيسية', callback_data: 'help_main' }]];
+            let backButton = [[{ text: 'العودة للقائمة الرئيسية', callback_data: 'help_main' }]];
 
             if (data === 'help_games') {
-                sectionText = '🎮 **قسم التفاعل والتسلية:**\n\n- مسابقة ، احزر ، حظ ، نرد ، عملة ، سرعة ، اختار ، صراحة ، تحدي ، توافق ، نقاط ، مستواي ، توب ، ترتيب ، فعالية ، سؤال ، لغز ، ذكاء ، أسرع ، صح ، خطأ';
+                sectionText = 'قسم التفاعل والتسلية:\n\n- مسابقة ، احزر ، حظ ، نرد ، عملة ، سرعة ، اختار ، صراحة ، تحدي ، توافق ، نقاط ، مستواي ، توب ، ترتيب ، فعالية ، سؤال ، لغز ، ذكاء ، أسرع ، صح ، خطأ';
             } else if (data === 'help_members') {
-                sectionText = '👥 **قسم الأعضاء:**\n\n- معلوماتي ، ايدي ، رتبتي ، حسابي ، منشن ، قوانين ، اهمس ، همسه ، ه ، وقتي ، نقاطي ، مستواي ، رتبتي';
+                sectionText = 'قسم الأعضاء:\n\n- معلوماتي ، ايدي ، رتبتي ، حسابي ، منشن ، قوانين ، اهمس ، همسه ، ه ، وقتي ، نقاطي ، مستواي ، رتبتي';
             } else if (data === 'help_protection') {
-                sectionText = '🛡️ **قسم الحماية والإدارة:**\n\n- حظر ، فك_الحظر ، طرد ، كتم ، فك_الكتم ، تقييد ، فك_التقييد ، تحذير ، فك_التحذير ، حذف ، تثبيت ، فك_التثبيت ، قفل ، فتح ، القوانين ، تعيين_القوانين ، ممنوع ، فك_المنع ، منع_الروابط ، منع_التكرار ، تنظيف ، مم ، خخ';
+                sectionText = 'قسم الحماية والإدارة:\n\n- حظر ، فك_الحظر ، طرد ، كتم ، فك_الكتم ، تقييد ، فك_التقييد ، تحذير ، فك_التحذير ، حذف ، تثبيت ، فك_التثبيت ، قفل ، فتح ، القوانين ، تعيين_القوانين ، ممنوع ، فك_المنع ، منع_الروابط ، منع_التكرار ، تنظيف ، مم ، خخ';
             } else if (data === 'help_music') {
-                sectionText = '🎵 **قسم الأغاني والمكالمة:**\n\n- شغل ، أغنية ، ابحث ، يوت ، تشغيل ، إيقاف ، تخطي ، قائمة';
+                sectionText = 'قسم الأغاني والمكالمة:\n\n- شغل ، أغنية ، ابحث ، يوت ، تشغيل ، إيقاف ، تخطي ، قائمة';
             } else if (data === 'help_bot') {
-                sectionText = '🤖 **قسم البوت:**\n\n- بداية ، مساعدة ، معلومات ، إعدادات ، سرعة_البوت';
+                sectionText = 'قسم البوت:\n\n- بداية ، مساعدة ، معلومات ، إعدادات ، سرعة_البوت';
             } else if (data === 'help_dev') {
                 if (!isTheDev1) {
-                    return ctx.answerCbQuery('⚠️ هذا القسم مخصص للمطور الأساسي فقط!', { show_alert: true });
+                    return ctx.answerCbQuery('هذا القسم مخصص للمطور الأساسي فقط!', { show_alert: true });
                 }
-                sectionText = '🎖️ **قسم المطور:**\n\n- مطور ، إحصائيات ، المستخدمين ، المجموعات ، إذاعة ، إضافة_مطور ، حذف_مطور ، إعادة_تشغيل ، صيانة ، السجل ، تغيير_البادئة ، نسخة_احتياطية';
+                sectionText = '🎖️ قسم المطور:\n\n- مطور ، إحصائيات ، المستخدمين ، المجموعات ، إذاعة ، إضافة_مطور ، حذف_مطور ، إعادة_تشغيل ، صيانة ، السجل ، تغيير_البادئة ، نسخة_احتياطية';
             } else if (data === 'help_main') {
                 sectionText = '• إليك قائمة أوامر بوت تورايف الشاملة، اختر القسم المطلوب:';
                 backButton = [
                     [
-                        { text: '🎮 التفاعل والتسلية', callback_data: 'help_games' },
-                        { text: '👥 الأعضاء', callback_data: 'help_members' }
+                        { text: 'التفاعل والتسلية', callback_data: 'help_games' },
+                        { text: 'الأعضاء', callback_data: 'help_members' }
                     ],
                     [
-                        { text: '🛡️ الحماية والإدارة', callback_data: 'help_protection' },
-                        { text: '🎵 الأغاني والمكالمة', callback_data: 'help_music' }
+                        { text: 'الحماية والإدارة', callback_data: 'help_protection' },
+                        { text: 'الأغاني والمكالمة', callback_data: 'help_music' }
                     ],
                     [
-                        { text: '🤖 البوت', callback_data: 'help_bot' },
+                        { text: 'البوت', callback_data: 'help_bot' },
                         { text: '🎖️ المطور', callback_data: 'help_dev' }
                     ]
                 ];
