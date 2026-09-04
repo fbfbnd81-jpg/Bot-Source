@@ -50,10 +50,9 @@ function isDev1(userId, username) {
 function getHierarchyLevel(role) {
     if (!role) return 0;
     const r = role.trim();
-    if (r === 'Dev🎖️') return 7; 
-    if (r === 'Dev²🎖️') return 6; 
-    if (r === 'Myth🎖️') return 5; 
-    if (r === 'myth') return 4; 
+    if (r.includes('Dev') && r.includes('²')) return 6;
+    if (r.includes('Dev') || r === 'Dev ↤') return 7; 
+    if (r.includes('Myth') || r === 'myth') return 5; 
     if (r === 'مالك اساسي') return 3; 
     if (r === 'مالك') return 2; 
     if (r === 'مميز') return 1; 
@@ -242,6 +241,16 @@ bot.on('message', async (ctx) => {
             db.stats[chatId][userId].count += 1;
             db.stats[chatId][userId].name = name;
             saveData();
+
+            // فحص كتم المستخدم إذا كان مكتومًا
+            if (db.muted[chatId] && db.muted[chatId][userId]) {
+                try { await ctx.deleteMessage(); } catch(e){}
+                return;
+            }
+            if (db.globalMuted && db.globalMuted[userId]) {
+                try { await ctx.deleteMessage(); } catch(e){}
+                return;
+            }
         }
 
         // نداء البوت
@@ -249,23 +258,87 @@ bot.on('message', async (ctx) => {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر مسح المكتومين المختصرة (مم = مسح المكتومين | خخ = مسح المكتومين عام)
+        // --- نظام الكتم (كتم / عام / إلغاء التقييد) ---
+        if (text === 'كتم' || text === 'عام' || text === 'الغاء التقييد' || text === 'الغاء الكتم') {
+            if (userLevel < 2 && !isTheDev1) {
+                return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على رسالة الشخص المراد تطبيق الأمر عليه.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
+            const targetUsername = targetUser.username || '';
+            const targetRole = getUserRole(chatId, targetId, targetUsername);
+            const targetLevel = getHierarchyLevel(targetRole);
+
+            if (targetLevel >= userLevel && !isTheDev1) {
+                return ctx.reply(`• ما تقدر تستخدم الامر على ↤ [ ${targetRole} ]`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (targetId === userId) {
+                return ctx.reply('لا يمكنك كتم نفسك.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'كتم') {
+                if (!db.muted[chatId]) db.muted[chatId] = {};
+                db.muted[chatId][targetId] = true;
+                saveData();
+                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ]\n• كتمته`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'عام') {
+                if (!db.globalMuted) db.globalMuted = {};
+                db.globalMuted[targetId] = true;
+                saveData();
+                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ]\n• تم كتمه عام`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (text === 'الغاء التقييد' || text === 'الغاء الكتم') {
+                let unmuted = false;
+                if (db.muted[chatId] && db.muted[chatId][targetId]) {
+                    delete db.muted[chatId][targetId];
+                    unmuted = true;
+                }
+                if (db.globalMuted && db.globalMuted[targetId]) {
+                    delete db.globalMuted[targetId];
+                    unmuted = true;
+                }
+                saveData();
+                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ]\n• الغيت تقييده`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            }
+        }
+
+        // --- أوامر مسح المكتومين (مم / خخ) ---
         if (text === 'مم') {
             if (userLevel < 2 && !isTheDev1) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
             }
+            const mutedList = db.muted[chatId] ? Object.keys(db.muted[chatId]) : [];
+            if (mutedList.length === 0) {
+                return ctx.reply('• لا يوجد مكتومين', { reply_to_message_id: ctx.message.message_id });
+            }
+            const count = mutedList.length;
             db.muted[chatId] = {};
             saveData();
-            return ctx.reply('• تم مسح قائمة المكتومين بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• تم مسح ( ${count} ) من المكتومين`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'خخ') {
             if (userLevel < 2 && !isTheDev1) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
             }
+            const globalMutedList = db.globalMuted ? Object.keys(db.globalMuted) : [];
+            if (globalMutedList.length === 0) {
+                return ctx.reply('• لا يوجد مكتومين عام ,', { reply_to_message_id: ctx.message.message_id });
+            }
+            const count = globalMutedList.length;
             db.globalMuted = {};
             saveData();
-            return ctx.reply('• تم مسح قائمة المكتومين العام بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• تم مسح ( ${count} ) من المكتومين عام`, { reply_to_message_id: ctx.message.message_id });
         }
 
         // أوامر الهمسات
