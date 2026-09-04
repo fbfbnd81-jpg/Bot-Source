@@ -98,6 +98,7 @@ bot.start(async (ctx) => {
                     if (!db.pendingReplies) db.pendingReplies = {};
                     db.pendingReplies[ctx.from.id] = {
                         senderId: wh.senderId,
+                        senderName: wh.senderName,
                         chatId: wh.chatId,
                         originalTargetId: wh.targetId,
                         originalTargetName: wh.targetName
@@ -202,11 +203,12 @@ bot.on('message', async (ctx) => {
                 }
 
                 if (!db.whispers) db.whispers = {};
+                // نعكس الأوار: الشخص الذي يرد يصبح هو المرسل، والشخص الأصلي يصبح هو المستهدف
                 db.whispers[wId] = {
                     senderId: userId,
                     senderName: name,
                     targetId: repInfo.senderId,
-                    targetName: repInfo.originalTargetName || 'المستخدم',
+                    targetName: repInfo.senderName,
                     content: contentData,
                     seen: false
                 };
@@ -215,8 +217,9 @@ bot.on('message', async (ctx) => {
 
                 const botInfo = await ctx.telegram.getMe();
                 try {
+                    // إرسال الهمسة الجديدة للقروب بنفس الشكل تماماً
                     await ctx.telegram.sendMessage(repInfo.chatId, 
-                        `• ياحلو ↤ [${repInfo.senderId === repInfo.originalTargetId ? repInfo.originalTargetName : 'المستخدم'}](tg://user?id=${repInfo.senderId})\n\n• وصلك رد على الهمسة من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفه`, {
+                        `• ياحلو ↤ [${repInfo.senderName}](tg://user?id=${repInfo.senderId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
                         parse_mode: 'Markdown',
                         reply_markup: {
                             inline_keyboard: [
@@ -227,7 +230,7 @@ bot.on('message', async (ctx) => {
                     });
                 } catch (e) {}
 
-                return ctx.reply('• تم ارسال الرد كهمسة بنجاح');
+                return ctx.reply('• تم ارسال الرد كهمسة في القروب بنجاح ✓');
             }
 
             return;
