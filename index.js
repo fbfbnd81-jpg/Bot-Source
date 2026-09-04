@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = require('http');
+const http = http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -264,7 +264,29 @@ bot.on('message', async (ctx) => {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // تحديد المستهدف (إذا كان هناك رد، يتم استهداف صاحب الرسالة المردود عليها، وإلا المستخدم نفسه)
+        // --- أمر الأوامر / القائمة الرئيسية ---
+        if (text === 'الاوامر' || text === 'الأوامر' || text === 'اوامر' || text === 'أوامر' || text === 'مساعدة' || text === 'الخدمات') {
+            return ctx.reply('• إليك قائمة أوامر بوت تورايف الشاملة، اختر القسم المطلوب:', {
+                reply_to_message_id: ctx.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🎮 التفاعل والتسلية', callback_data: 'help_games' },
+                            { text: '👥 الأعضاء', callback_data: 'help_members' }
+                        ],
+                        [
+                            { text: '🛡️ الحماية والإدارة', callback_data: 'help_protection' },
+                            { text: '🎵 الأغاني والمكالمة', callback_data: 'help_music' }
+                        ],
+                        [
+                            { text: '🤖 البوت', callback_data: 'help_bot' },
+                            { text: '🎖️ المطور', callback_data: 'help_dev' }
+                        ]
+                    ]
+                }
+            });
+        }
+
         let targetId = userId;
         let targetName = name;
         let targetUsername = username;
@@ -382,7 +404,7 @@ bot.on('message', async (ctx) => {
             });
         }
 
-        // أمر تفاعلي (أو ريبلاي عليه)
+        // أمر تفاعلي
         if (text === 'تفاعلي' || text === 'تفاعل') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             
@@ -404,17 +426,17 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyMsg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر رتبته (أو ريبلاي عليه)
+        // أمر رتبته
         if (text === 'رتبته' || text === 'رتبتي') {
             return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🎖️ رتبته ↤ ${targetRole}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر لقبه (أو ريبلاي عليه)
+        // أمر لقبه
         if (text === 'لقبه' || text === 'لقبي') {
             return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🏷️ لقبه ↤ ${targetTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر المتفاعلين (توب المتفاعلين)
+        // أمر المتفاعلين
         if (text === 'المتفاعلين' || text === 'المتفاعلير' || text === 'توب') {
             if (!db.stats[chatId] || Object.keys(db.stats[chatId]).length === 0) {
                 return ctx.reply('لا توجد إحصائيات تفاعل مسجلة بعد في هذه المجموعة.', { reply_to_message_id: ctx.message.message_id });
@@ -447,43 +469,75 @@ bot.on('callback_query', async (ctx) => {
     try {
         const data = ctx.callbackQuery.data;
         const userId = ctx.from.id;
+        const username = ctx.from.username || '';
         const name = ctx.from.first_name || 'المستخدم';
+        const isTheDev1 = isDev1(userId, username);
 
         if (data.startsWith('wh_view_')) {
             const wId = data.replace('wh_view_', '');
-
             if (!db.whispers || !db.whispers[wId]) {
                 return ctx.answerCbQuery('انتهت صلاحية هذه الهمسة.', { show_alert: true });
             }
-
             const wh = db.whispers[wId];
-
             if (userId.toString() !== wh.targetId.toString()) {
                 return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
             }
-
             const c = wh.content;
-            let alertText = '';
-
-            if (c.type === 'sticker') {
-                alertText = '📁 محتوى الهمسة: [ملصق]';
-            } else if (c.type === 'photo') {
-                alertText = c.caption ? `📸 ${c.caption}` : '📸 محتوى الهمسة: [صورة]';
-            } else if (c.type === 'animation') {
-                alertText = c.caption ? `🎥 ${c.caption}` : '🎥 محتوى الهمسة: [تحريك/GIF]';
-            } else {
-                alertText = c.value;
-            }
-
+            let alertText = c.type === 'sticker' ? '📁 محتوى الهمسة: [ملصق]' : (c.type === 'photo' ? (c.caption ? `📸 ${c.caption}` : '📸 محتوى الهمسة: [صورة]') : (c.type === 'animation' ? (c.caption ? `🎥 ${c.caption}` : '🎥 محتوى الهمسة: [تحريك/GIF]') : c.value));
+            
             if (!wh.seen) {
                 wh.seen = true;
                 saveData();
-                try {
-                    await ctx.telegram.sendMessage(wh.senderId, `• ${name}\n• شاف همستك .\n-`);
-                } catch (e) {}
+                try { await ctx.telegram.sendMessage(wh.senderId, `• ${name}\n• شاف همستك .\n-`); } catch (e) {}
+            }
+            return ctx.answerCbQuery(alertText, { show_alert: true });
+        }
+
+        // تفاعل أزرار الأوامر الشفافة
+        if (data.startsWith('help_')) {
+            let sectionText = '';
+            let backButton = [[{ text: '🔙 العودة للقائمة الرئيسية', callback_data: 'help_main' }]];
+
+            if (data === 'help_games') {
+                sectionText = '🎮 **قسم التفاعل والتسلية:**\n\n- مسابقة ، احزر ، حظ ، نرد ، عملة ، سرعة ، اختار ، صراحة ، تحدي ، توافق ، نقاط ، مستواي ، توب ، ترتيب ، فعالية ، سؤال ، لغز ، ذكاء ، أسرع ، صح ، خطأ';
+            } else if (data === 'help_members') {
+                sectionText = '👥 **قسم الأعضاء:**\n\n- معلوماتي ، ايدي ، رتبتي ، حسابي ، منشن ، قوانين ، اهمس ، همسه ، ه ، وقتي ، نقاطي ، مستواي ، رتبتي';
+            } else if (data === 'help_protection') {
+                sectionText = '🛡️ **قسم الحماية والإدارة:**\n\n- حظر ، فك_الحظر ، طرد ، كتم ، فك_الكتم ، تقييد ، فك_التقييد ، تحذير ، فك_التحذير ، حذف ، تثبيت ، فك_التثبيت ، قفل ، فتح ، القوانين ، تعيين_القوانين ، ممنوع ، فك_المنع ، منع_الروابط ، منع_التكرار ، تنظيف ، مم ، خخ';
+            } else if (data === 'help_music') {
+                sectionText = '🎵 **قسم الأغاني والمكالمة:**\n\n- شغل ، أغنية ، ابحث ، يوت ، تشغيل ، إيقاف ، تخطي ، قائمة';
+            } else if (data === 'help_bot') {
+                sectionText = '🤖 **قسم البوت:**\n\n- بداية ، مساعدة ، معلومات ، إعدادات ، سرعة_البوت';
+            } else if (data === 'help_dev') {
+                // حماية قسم المطور - لا يستطيع فتحه أو سوقه إلا ديف ون فقط!
+                if (!isTheDev1) {
+                    return ctx.answerCbQuery('⚠️ هذا القسم مخصص للمطور الأساسي فقط!', { show_alert: true });
+                }
+                sectionText = '🎖️ **قسم المطور:**\n\n- مطور ، إحصائيات ، المستخدمين ، المجموعات ، إذاعة ، إضافة_مطور ، حذف_مطور ، إعادة_تشغيل ، صيانة ، السجل ، تغيير_البادئة ، نسخة_احتياطية';
+            } else if (data === 'help_main') {
+                sectionText = '• إليك قائمة أوامر بوت تورايف الشاملة، اختر القسم المطلوب:';
+                backButton = [
+                    [
+                        { text: '🎮 التفاعل والتسلية', callback_data: 'help_games' },
+                        { text: '👥 الأعضاء', callback_data: 'help_members' }
+                    ],
+                    [
+                        { text: '🛡️ الحماية والإدارة', callback_data: 'help_protection' },
+                        { text: '🎵 الأغاني والمكالمة', callback_data: 'help_music' }
+                    ],
+                    [
+                        { text: '🤖 البوت', callback_data: 'help_bot' },
+                        { text: '🎖️ المطور', callback_data: 'help_dev' }
+                    ]
+                ];
             }
 
-            return ctx.answerCbQuery(alertText, { show_alert: true });
+            return ctx.editMessageText(sectionText, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: backButton
+                }
+            });
         }
     } catch (e) {}
 });
