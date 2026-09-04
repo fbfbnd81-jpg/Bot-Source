@@ -11,7 +11,16 @@ http.createServer((req, res) => {
 const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
 const DATA_FILE = './toraif_github_database.json';
-let db = { roles: {}, stats: {}, titles: {}, muted: {}, globalMuted: {}, adminMenus: {}, whispers: {} };
+let db = { 
+    roles: {}, 
+    stats: {}, 
+    titles: {}, 
+    muted: {}, 
+    globalMuted: {}, 
+    adminMenus: {}, 
+    whispers: {}, 
+    pendingWhispers: {} 
+};
 
 if (fs.existsSync(DATA_FILE)) {
     try {
@@ -23,6 +32,7 @@ if (fs.existsSync(DATA_FILE)) {
         if (fileData.globalMuted) db.globalMuted = fileData.globalMuted;
         if (fileData.adminMenus) db.adminMenus = fileData.adminMenus;
         if (fileData.whispers) db.whispers = fileData.whispers;
+        if (fileData.pendingWhispers) db.pendingWhispers = fileData.pendingWhispers;
     } catch (e) {}
 }
 
@@ -59,13 +69,18 @@ bot.start(async (ctx) => {
     try {
         if (ctx.chat.type === 'private') {
             const args = ctx.message.text.split(' ');
-            if (args.length > 1 && args[1].startsWith('whsp_')) {
-                const wId = args[1].replace('whsp_', '');
-                if (db.whispers && db.whispers[wId]) {
-                    const wData = db.whispers[wId];
-                    return ctx.reply(`💌 همسة خاصة لك من [${wData.senderName}]:\n\n${wData.text}`, { parse_mode: 'Markdown' });
-                } else {
-                    return ctx.reply('انتهت صلاحية هذه الهمسة أو غير موجودة.');
+            if (args.length > 1) {
+                if (args[1].startsWith('start_whisper_')) {
+                    const targetId = args[1].replace('start_whisper_', '');
+                    if (ctx.from.id.toString() !== targetId.toString()) {
+                        return ctx.reply('هذا البدء مخصص لشخص آخر.');
+                    }
+                    if (!db.pendingWhispers) db.pendingWhispers = {};
+                    const pData = db.pendingWhispers[targetId];
+                    if (!pData) {
+                        return ctx.reply('انتهت صلاحية عملية الهمسة، يرجى البدء من جديد من المجموعة.');
+                    }
+                    return ctx.reply('• أرسل الآن الهمسة\n\n• يمكنك إرسال نص أو ملصق أو صورة أو قيف');
                 }
             }
         }
@@ -98,7 +113,72 @@ bot.on('message', async (ctx) => {
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isTheDev1 = isDev1(userId, username);
 
-        if (ctx.chat.type === 'private') return;
+        // التعامل مع محتوى الهمسة في الخاص
+        if (ctx.chat.type === 'private') {
+            if (db.pendingWhispers && db.pendingWhispers[userId]) {
+                const whInfo = db.pendingWhispers[userId];
+                const wId = Date.now().toString() + Math.floor(Math.random() * 1000);
+
+                let contentData = { type: 'text', value: '' };
+                if (ctx.message.text) {
+                    contentData = { type: 'text', value: ctx.message.text };
+                } else if (ctx.message.sticker) {
+                    contentData = { type: 'sticker', value: ctx.message.sticker.file_id };
+                } else if (ctx.message.photo) {
+                    contentData = { type: 'photo', value: ctx.message.photo[ctx.message.photo.length - 1].file_id, caption: ctx.message.caption || '' };
+                } else if (ctx.message.animation) {
+                    contentData = { type: 'animation', value: ctx.message.animation.file_id, caption: ctx.message.caption || '' };
+                } else {
+                    return ctx.reply('نوع المحتوى غير مدعوم للهمسة. يرجى إرسال نص أو ملصق أو صورة أو قيف.');
+                }
+
+                if (!db.whispers) db.whispers = {};
+                db.whispers[wId] = {
+                    senderId: userId,
+                    senderName: name,
+                    targetId: whInfo.targetId,
+                    targetName: whInfo.targetName,
+                    content: contentData,
+                    seen: false
+                };
+                delete db.pendingWhispers[userId];
+                saveData();
+
+                const botInfo = await ctx.telegram.getMe();
+                
+                try {
+                    await ctx.telegram.sendMessage(whInfo.chatId, 
+                        `• ياحلو ↤ [${whInfo.targetName}](tg://user?id=${whInfo.targetId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'روية الهمسه', callback_data: `wh_view_${wId}` }],
+                                [{ text: 'رد على الهمسه', callback_data: `wh_reply_${wId}` }]
+                            ]
+                        }
+                    });
+                } catch (e) {}
+
+                return ctx.reply('• تم ارسال الهمسة');
+            }
+
+            // التعامل مع الرد على الهمسة في الخاص
+            if (db.pendingReply && db.pendingReply[userId]) {
+                const repInfo = db.pendingReply[userId];
+                const senderId = repInfo.senderId;
+
+                let replyContent = ctx.message.text || 'محتوى مرئي للرد';
+                try {
+                    await ctx.telegram.sendMessage(senderId, `📩 وصلك رد جديد على همستك من [${name}](tg://user?id=${userId}):\n\n${replyContent}`, { parse_mode: 'Markdown' });
+                } catch (e) {}
+
+                delete db.pendingReply[userId];
+                saveData();
+                return ctx.reply('• تم ارسال الرد بنجاح');
+            }
+
+            return;
+        }
 
         if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             const isMuted = db.muted[chatId] && db.muted[chatId][userId];
@@ -119,37 +199,35 @@ bot.on('message', async (ctx) => {
             return ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // 🤫 ميزة الهمسة
-        if (text.startsWith('همسه') || text.startsWith('اهمس')) {
-            const parts = text.split(' ');
-            parts.shift(); // إزالة كلمة الأمر
-            const whisperText = parts.join(' ');
-
+        // 🤫 بدء الهمسة من القروب
+        if (text === 'اهمس' || text === 'همسه' || text === 'ه') {
             if (!ctx.message.reply_to_message) {
-                return ctx.reply('يرجى الرد على الشخص لإرسال الهمسة.', { reply_to_message_id: ctx.message.message_id });
-            }
-            if (!whisperText) {
-                return ctx.reply('يرجى كتابة النص المراد همسه مع الأمر.', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('يرجى الرد على رسالة الشخص المراد اهماسه.', { reply_to_message_id: ctx.message.message_id });
             }
 
             const targetUser = ctx.message.reply_to_message.from;
             const targetId = targetUser.id;
-            const wId = Date.now().toString() + Math.floor(Math.random() * 1000);
+            const targetName = targetUser.first_name || 'المستخدم';
 
-            if (!db.whispers) db.whispers = {};
-            db.whispers[wId] = {
-                senderName: name,
-                text: whisperText
+            if (targetId === userId) {
+                return ctx.reply('لا يمكنك إرسال همسة لنفسك.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            if (!db.pendingWhispers) db.pendingWhispers = {};
+            db.pendingWhispers[userId] = {
+                chatId: chatId,
+                targetId: targetId,
+                targetName: targetName
             };
             saveData();
 
             const botInfo = await ctx.telegram.getMe();
-            return ctx.reply(`🤫 تم إرسال همسة خاصة إلى [${targetUser.first_name}](tg://user?id=${targetId})`, {
+            return ctx.reply(`• تم تحديد الهمسه لـ ↤ [${targetName}](tg://user?id=${targetId})\n\n• اضغط الزر لكتابة الهمسة`, {
                 parse_mode: 'Markdown',
                 reply_to_message_id: ctx.message.message_id,
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: 'اضغط هنا لقراءة الهمسة 💌', url: `https://t.me/${botInfo.username}?start=whsp_${wId}` }]
+                        [{ text: 'اهمس هنا', url: `https://t.me/${botInfo.username}?start=start_whisper_${userId}` }]
                     ]
                 }
             });
@@ -165,7 +243,6 @@ bot.on('message', async (ctx) => {
             const searchingMsg = await ctx.reply('🔍 جاري البحث عن الأغنية...', { reply_to_message_id: ctx.message.message_id });
 
             try {
-                // استخدام Invidious API للبحث وجلب معلومات الصوت مباشرة دون الحاجة لحزم معقدة
                 const searchUrl = `https://vid.puffyan.us/api/v1/search?q=${encodeURIComponent(query)}&type=video`;
                 
                 https.get(searchUrl, (resAPI) => {
@@ -175,7 +252,7 @@ bot.on('message', async (ctx) => {
                         try {
                             const results = JSON.parse(data);
                             if (!results || results.length === 0) {
-                                await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, '❌ لم يتم العثور على نتائج.');
+                                await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, 'لم يتم العثور على نتائج.');
                                 return;
                             }
 
@@ -197,14 +274,14 @@ bot.on('message', async (ctx) => {
                                 reply_to_message_id: ctx.message.message_id
                             });
                         } catch (err) {
-                            await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, '❌ حدث خطأ أثناء جلب الأغنية.');
+                            await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, 'حدث خطأ أثناء جلب الأغنية.');
                         }
                     });
                 }).on('error', async () => {
-                    await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, '❌ تعذر الاتصال بخدمة البحث.');
+                    await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, 'تعذر الاتصال بخدمة البحث.');
                 });
             } catch (e) {
-                await ctx.reply('❌ حدث خطأ غير متوقع.', { reply_to_message_id: ctx.message.message_id });
+                await ctx.reply('حدث خطأ غير متوقع.', { reply_to_message_id: ctx.message.message_id });
             }
             return;
         }
@@ -457,6 +534,66 @@ bot.on('message', async (ctx) => {
 bot.on('callback_query', async (ctx) => {
     try {
         const data = ctx.callbackQuery.data;
+        const userId = ctx.from.id;
+        const name = ctx.from.first_name || 'المستخدم';
+
+        // التعامل مع أزرار الهمسة
+        if (data.startsWith('wh_')) {
+            const parts = data.split('_');
+            const action = parts[1]; // view أو reply
+            const wId = parts[2];
+
+            if (!db.whispers || !db.whispers[wId]) {
+                return ctx.answerCbQuery('انتهت صلاحية هذه الهمسة.', { show_alert: true });
+            }
+
+            const wh = db.whispers[wId];
+
+            if (action === 'view') {
+                if (userId.toString() !== wh.targetId.toString()) {
+                    return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
+                }
+
+                // إرسال محتوى الهمسة للمستلم
+                const c = wh.content;
+                if (c.type === 'text') {
+                    await ctx.reply(`💌 محتوى الهمسة:\n\n${c.value}`);
+                } else if (c.type === 'sticker') {
+                    await ctx.replyWithSticker(c.value);
+                } else if (c.type === 'photo') {
+                    await ctx.replyWithPhoto(c.value, { caption: c.caption || '' });
+                } else if (c.type === 'animation') {
+                    await ctx.replyWithAnimation(c.value, { caption: c.caption || '' });
+                }
+
+                // إرسال إشعار للمرسل مرة واحدة فقط عند الرؤية الأولى
+                if (!wh.seen) {
+                    wh.seen = true;
+                    saveData();
+                    try {
+                        await ctx.telegram.sendMessage(wh.senderId, `• ${name}\n• شاف همستك .\n-`);
+                    } catch (e) {}
+                }
+
+                return ctx.answerCbQuery('تم عرض الهمسة بنجاح');
+            }
+
+            if (action === 'reply') {
+                if (userId.toString() !== wh.targetId.toString()) {
+                    return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
+                }
+
+                if (!db.pendingReply) db.pendingReply = {};
+                db.pendingReply[userId] = {
+                    senderId: wh.senderId
+                };
+                saveData();
+
+                await ctx.reply('• أرسل الآن ردك على الهمسة في هذه المحادثة الخاصة:');
+                return ctx.answerCbQuery();
+            }
+        }
+
         if (data.startsWith('prm_')) {
             const parts = data.split('_');
             const menuId = parts[1];
