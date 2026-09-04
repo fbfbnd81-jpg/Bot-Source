@@ -10,8 +10,8 @@ http.createServer((req, res) => {
 const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
 const adminMenus = {}; 
-
 const DATA_FILE = './toraif_github_database.json';
+
 let db = { roles: {}, stats: {}, titles: {}, muted: {}, globalMuted: {} };
 
 if (fs.existsSync(DATA_FILE)) {
@@ -38,13 +38,13 @@ function isDev1(userId, username) {
 function getHierarchyLevel(role) {
     if (!role) return 0;
     const r = role.trim();
-    if (r === 'Dev🎖️') return 7; // ديف ون / مطور اساسي
-    if (r === 'Dev²🎖️') return 6; // ديف تو
-    if (r === 'Myth🎖️') return 5; // اكسترا / اكس
-    if (r === 'myth') return 4; // ميث / M
-    if (r === 'مالك اساسي') return 3; // اساس / مالك اساسي
-    if (r === 'مالك') return 2; // مالك
-    if (r === 'مميز') return 1; // مميز
+    if (r === 'Dev🎖️') return 7; 
+    if (r === 'Dev²🎖️') return 6; 
+    if (r === 'Myth🎖️') return 5; 
+    if (r === 'myth') return 4; 
+    if (r === 'مالك اساسي') return 3; 
+    if (r === 'مالك') return 2; 
+    if (r === 'مميز') return 1; 
     return 0;
 }
 
@@ -86,7 +86,6 @@ bot.on('message', async (ctx) => {
 
         if (ctx.chat.type === 'private') return;
 
-        // فحص الكتم والعام والمكتومين
         if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             const isMuted = db.muted[chatId] && db.muted[chatId][userId];
             const isGlobalMuted = db.globalMuted && db.globalMuted[userId];
@@ -96,7 +95,6 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // الرد "ياغبيي ذا البوت" فقط عند محاولة كتم/تقييد/حظر/همس البوت نفسه
         const isTargetingBot = ctx.message.reply_to_message && 
                                ctx.message.reply_to_message.from && 
                                ctx.message.reply_to_message.from.is_bot && 
@@ -107,7 +105,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // تفاعلات عامة
         if (text === 'احبك' || text === 'أحبك') {
             const loveReplies = ['وانا احب ايفي', 'وانا احب توري', 'وانا بعد', 'اعشقك'];
             return ctx.reply(loveReplies[Math.floor(Math.random() * loveReplies.length)], { reply_to_message_id: ctx.message.message_id });
@@ -120,7 +117,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
         }
 
-        // تتبع التفاعل
         if (ctx.chat.type !== 'private' && ctx.from && !ctx.from.is_bot) {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             if (!db.stats[chatId][userId]) {
@@ -132,7 +128,6 @@ bot.on('message', async (ctx) => {
             saveData();
         }
 
-        // أمر تصفير التفاعل (مخصص لديف ون فقط)
         if (text === 'تصفير التفاعل') {
             if (!isTheDev1) {
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -197,18 +192,17 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• الرتبة ↦ ｢ ${targetRole} ｣${customTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- أوامر الكتم الخاصة ---
-        if (text === 'مم') { // مسح المكتومين
-            if (userLevel < 4) { // تحتاج ميث وفوق مثلاً أو مشرف
-                return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا فقط ❌', { reply_to_message_id: ctx.message.message_id });
+        if (text === 'مم') { 
+            if (userLevel < 4) { 
+                return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا', { reply_to_message_id: ctx.message.message_id });
             }
             db.muted[chatId] = {};
             saveData();
             return ctx.reply('• تم مسح جميع المكتومين في القروب ✓', { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'خخ') { // مسح المكتومين عام
-            if (userLevel < 6) { // ديف تو وفوق
+        if (text === 'خخ') { 
+            if (userLevel < 6) { 
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
             db.globalMuted = {};
@@ -217,8 +211,8 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'كتم') {
-            if (userLevel < 4) { // ماحد يقدر الا myth وفوق
-                return ctx.reply('• هذا الأمر مخصص لـ ｢ myth ｣ وفوق ❌', { reply_to_message_id: ctx.message.message_id });
+            if (userLevel < 4) { 
+                return ctx.reply('• هذا الأمر مخصص لـ ｢ myth ｣ وفوق', { reply_to_message_id: ctx.message.message_id });
             }
             if (!ctx.message.reply_to_message) return ctx.reply('يرجى الرد على الشخص.', { reply_to_message_id: ctx.message.message_id });
             const tId = ctx.message.reply_to_message.from.id;
@@ -228,9 +222,9 @@ bot.on('message', async (ctx) => {
             return ctx.reply('• تم كتم المستخدم بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
         }
 
-        if (text === 'عام') { // الكتم العام
-            if (userLevel < 5) { // Myth🎖️ وفوق
-                return ctx.reply('• هذا الأمر مخصص لـ ｢ Myth🎖️ ｣ وفوق ❌', { reply_to_message_id: ctx.message.message_id });
+        if (text === 'عام') { 
+            if (userLevel < 5) { 
+                return ctx.reply('• هذا الأمر مخصص لـ ｢ Myth🎖️ ｣ وفوق', { reply_to_message_id: ctx.message.message_id });
             }
             if (!ctx.message.reply_to_message) return ctx.reply('يرجى الرد على الشخص.', { reply_to_message_id: ctx.message.message_id });
             const tId = ctx.message.reply_to_message.from.id;
@@ -240,7 +234,7 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'تقييد') {
-            if (userLevel < 6) { // ديف تو وفوق فقط
+            if (userLevel < 6) { 
                 return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
             }
             if (!ctx.message.reply_to_message) return ctx.reply('يرجى الرد على الشخص.', { reply_to_message_id: ctx.message.message_id });
@@ -251,10 +245,60 @@ bot.on('message', async (ctx) => {
             return ctx.reply('• تم تقييد المستخدم بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- أوامر الرفع والرتب ---
-        const isPromotionCmd = text.startsWith('رفع ') || ['مميز', 'مالك', 'اساس', 'اساسي', 'م', 'ميث', 'اكس', 'اكسترا', 'ديف', 'مطور اساسي', 'تنزيل مشرف', 'تنزيل الكل'].includes(text);
+        // التعامل مع أمر رفع مشرف أو ترقية لإظهار الصلاحيات
+        if (text === 'رفع مشرف' || text === 'ترقية') {
+            if (userLevel < 1 && !isTheDev1) {
+                return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا', { reply_to_message_id: ctx.message.message_id });
+            }
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const targetName = targetUser.first_name || 'المستخدم';
 
-        if (isPromotionCmd) {
+            const menuId = Date.now().toString();
+            adminMenus[menuId] = {
+                chatId,
+                targetId,
+                targetName,
+                p: {
+                    change_info: false,
+                    pin_messages: false,
+                    restrict_members: false,
+                    invite_users: false,
+                    delete_messages: true,
+                    manage_video_chats: false,
+                    promote_members: false
+                }
+            };
+
+            const getSt = (v) => v ? 'نعم' : 'لا';
+            const p = adminMenus[menuId].p;
+
+            return ctx.reply(`• حدد الصلاحيات ↦ [${targetName}](tg://user?id=${targetId})`, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: ctx.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `• تغيير معلومات المجموعة ↦ ${getSt(p.change_info)}`, callback_data: `prm_${menuId}_ci` }],
+                        [{ text: `• تثبيت الرسائل ↦ ${getSt(p.pin_messages)}`, callback_data: `prm_${menuId}_pm` }],
+                        [{ text: `• حظر المستخدمين ↦ ${getSt(p.restrict_members)}`, callback_data: `prm_${menuId}_rm` }],
+                        [{ text: `• دعوة المستخدمين ↦ ${getSt(p.invite_users)}`, callback_data: `prm_${menuId}_iu` }],
+                        [{ text: `• مسح الرسائل ↦ ${getSt(p.delete_messages)}`, callback_data: `prm_${menuId}_dm` }],
+                        [{ text: `• ادارة المكالمات ↦ ${getSt(p.manage_video_chats)}`, callback_data: `prm_${menuId}_vc` }],
+                        [{ text: `• اضافة مشرفين ↦ ${getSt(p.promote_members)}`, callback_data: `prm_${menuId}_pr` }],
+                        [{ text: 'إخفاء الأوامر', callback_data: `prm_${menuId}_hide` }]
+                    ]
+                }
+            });
+        }
+
+        // أوامر الرفع المباشرة (مثل M, رفع M, مميز, مالك, اساس, اكس, ديف)
+        const cleanText = text.startsWith('رفع ') ? text.replace('رفع ', '').trim() : text;
+        const rankKeywords = ['مميز', 'مالك', 'اساس', 'اساسي', 'مالك اساسي', 'م', 'ميث', 'اكس', 'اكسترا', 'ديف', 'مطور اساسي', 'تنزيل مشرف', 'تنزيل الكل'];
+
+        if (rankKeywords.includes(cleanText)) {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على الشخص لتنفيذ الأمر.', { reply_to_message_id: ctx.message.message_id });
             }
@@ -263,42 +307,34 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
             const targetMention = `[${targetName}](tg://user?id=${targetId})`;
 
-            // تحليل الرتبة المطلوبة وصيغها
             let requestedRank = '';
             let targetRankLevel = 0;
 
-            const cleanText = text.replace('رفع ', '').trim();
             if (cleanText === 'مميز') { requestedRank = 'مميز'; targetRankLevel = 1; }
             else if (cleanText === 'مالك') { requestedRank = 'مالك'; targetRankLevel = 2; }
-            else if (cleanText === 'اساس' || cleanText === 'اساسي' || cleanText === 'مالك اساسي') { requestedRank = 'مالك اساسي'; targetRankLevel = 3; }
-            else if (cleanText === 'م' || cleanText === 'ميث') { requestedRank = 'myth'; targetRankLevel = 4; }
-            else if (cleanText === 'اكس' || cleanText === 'اكسترا') { requestedRank = 'Myth🎖️'; targetRankLevel = 5; }
+            else if (['اساس', 'اساسي', 'مالك اساسي'].includes(cleanText)) { requestedRank = 'مالك اساسي'; targetRankLevel = 3; }
+            else if (['م', 'ميث'].includes(cleanText)) { requestedRank = 'myth'; targetRankLevel = 4; }
+            else if (['اكس', 'اكسترا'].includes(cleanText)) { requestedRank = 'Myth🎖️'; targetRankLevel = 5; }
             else if (cleanText === 'ديف') { requestedRank = 'Dev²🎖️'; targetRankLevel = 6; }
             else if (cleanText === 'مطور اساسي') { requestedRank = 'Dev🎖️'; targetRankLevel = 7; }
-            else if (text === 'تنزيل مشرف' || text === 'تنزيل الكل') { requestedRank = 'عضو'; targetRankLevel = 0; }
+            else if (['تنزيل مشرف', 'تنزيل الكل'].includes(cleanText)) { requestedRank = 'عضو'; targetRankLevel = 0; }
 
-            // فحص صلاحيات الرفع بناءً على طلبك:
-            // - المالك الأساسي يقدر يرفع المميز والمالك فقط (level 3 يقدر يرفع 1 و 2)
-            // - الميث يقدر يرفع: مالك اساسي، مالك، مميز (level 4 يقدر يرفع 3, 2, 1)
-            // - الاكسترا يقدر يرفع: مالك اساسي، مالك، مميز (level 5 يقدر يرفع 3, 2, 1)
-            // - ديف تو يقدر يرفع: ميث، مالك اساسي، مميز (level 6 يقدر يرفع 4, 3, 1)
-            // - ديف ون يرفع الكل
             let canPromote = false;
             if (isTheDev1 || userLevel === 7) {
-                canPromote = true; // ديف ون يرفع الكل
-            } else if (userLevel === 6) { // ديف تو (يقدر يرفع: ميث، مالك اساسي، مميز)
+                canPromote = true; 
+            } else if (userLevel === 6) { 
                 if ([1, 3, 4].includes(targetRankLevel)) canPromote = true;
-            } else if (userLevel === 5 || userLevel === 4) { // اكسترا أو ميث (يقدر يرفع: مالك اساسي، مالك، مميز)
+            } else if (userLevel === 5 || userLevel === 4) { 
                 if ([1, 2, 3].includes(targetRankLevel)) canPromote = true;
-            } else if (userLevel === 3) { // مالك اساسي (يقدر يرفع: المميز والمالك فقط)
+            } else if (userLevel === 3) { 
                 if ([1, 2].includes(targetRankLevel)) canPromote = true;
             }
 
             if (!canPromote && userLevel > 0 && targetRankLevel >= userLevel) {
-                return ctx.reply('• لا يمكنك رفع شخص لرتبة مساوية أو أعلى منك أو لا توجد صلاحية ❌', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('• لا يمكنك رفع شخص لرتبة مساوية أو أعلى منك', { reply_to_message_id: ctx.message.message_id });
             }
             if (!canPromote && userLevel === 0) {
-                return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا فقط ❌', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا', { reply_to_message_id: ctx.message.message_id });
             }
 
             if (requestedRank) {
@@ -312,6 +348,73 @@ bot.on('message', async (ctx) => {
     } catch (e) {
         console.error("Error:", e);
     }
+});
+
+bot.on('callback_query', async (ctx) => {
+    try {
+        const data = ctx.callbackQuery.data;
+        if (data.startsWith('prm_')) {
+            const parts = data.split('_');
+            const menuId = parts[1];
+            const action = parts[2];
+
+            if (!adminMenus[menuId]) {
+                return ctx.answerCbQuery('انتهت صلاحية هذه القائمة.');
+            }
+
+            const menu = adminMenus[menuId];
+            const p = menu.p;
+
+            if (action === 'hide') {
+                delete adminMenus[menuId];
+                try { await ctx.deleteMessage(); } catch (e) {}
+                return ctx.answerCbQuery();
+            }
+
+            if (action === 'ci') p.change_info = !p.change_info;
+            if (action === 'pm') p.pin_messages = !p.pin_messages;
+            if (action === 'rm') p.restrict_members = !p.restrict_members;
+            if (action === 'iu') p.invite_users = !p.invite_users;
+            if (action === 'dm') p.delete_messages = !p.delete_messages;
+            if (action === 'vc') p.manage_video_chats = !p.manage_video_chats;
+            if (action === 'pr') p.promote_members = !p.promote_members;
+
+            try {
+                await ctx.telegram.promoteChatMember(menu.chatId, menu.targetId, {
+                    is_anonymous: false,
+                    can_manage_chat: true,
+                    can_post_messages: true,
+                    can_edit_messages: true,
+                    can_delete_messages: p.delete_messages,
+                    can_manage_voice_chats: p.manage_video_chats,
+                    can_restrict_members: p.restrict_members,
+                    can_promote_members: p.promote_members,
+                    can_change_info: p.change_info,
+                    can_invite_users: p.invite_users,
+                    can_pin_messages: p.pin_messages
+                });
+            } catch (e) {}
+
+            const getSt = (v) => v ? 'نعم' : 'لا';
+
+            await ctx.editMessageText(`• حدد الصلاحيات ↦ [${menu.targetName}](tg://user?id=${menu.targetId})`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: `• تغيير معلومات المجموعة ↦ ${getSt(p.change_info)}`, callback_data: `prm_${menuId}_ci` }],
+                        [{ text: `• تثبيت الرسائل ↦ ${getSt(p.pin_messages)}`, callback_data: `prm_${menuId}_pm` }],
+                        [{ text: `• حظر المستخدمين ↦ ${getSt(p.restrict_members)}`, callback_data: `prm_${menuId}_rm` }],
+                        [{ text: `• دعوة المستخدمين ↦ ${getSt(p.invite_users)}`, callback_data: `prm_${menuId}_iu` }],
+                        [{ text: `• مسح الرسائل ↦ ${getSt(p.delete_messages)}`, callback_data: `prm_${menuId}_dm` }],
+                        [{ text: `• ادارة المكالمات ↦ ${getSt(p.manage_video_chats)}`, callback_data: `prm_${menuId}_vc` }],
+                        [{ text: `• اضافة مشرفين ↦ ${getSt(p.promote_members)}`, callback_data: `prm_${menuId}_pr` }],
+                        [{ text: 'إخفاء الأوامر', callback_data: `prm_${menuId}_hide` }]
+                    ]
+                }
+            });
+            return ctx.answerCbQuery('تم التحديث ✓');
+        }
+    } catch (e) {}
 });
 
 bot.launch();
