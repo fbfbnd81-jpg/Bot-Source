@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = http = require('http');
+const http = require('http');
 const fs = require('fs');
 const https = require('https');
 
@@ -144,7 +144,6 @@ bot.on('message', async (ctx) => {
                 saveData();
                 
                 try {
-                    // إرسال الهمسة للقروب بشكل بطاقة سرية مخصصة للمستلم فقط
                     await ctx.telegram.sendMessage(whInfo.chatId, 
                         `• ياحلو ↤ [${whInfo.targetName}](tg://user?id=${whInfo.targetId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
                         parse_mode: 'Markdown',
@@ -548,20 +547,7 @@ bot.on('callback_query', async (ctx) => {
                     return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
                 }
 
-                // إرسال محتوى الهمسة للمستلم في الخاص حصراً (أو إشعار تنبيهي منبثق سري) لضمان عدم ظهورها بالقروب تماماً
                 const c = wh.content;
-                let contentDesc = '';
-                if (c.type === 'text') {
-                    contentDesc = `💌 محتوى الهمسة:\n\n${c.value}`;
-                } else if (c.type === 'sticker') {
-                    contentDesc = '📦 [ملصق سري]';
-                } else if (c.type === 'photo') {
-                    contentDesc = `📷 [صورة سرية]${c.caption ? '\n' + c.caption : ''}`;
-                } else if (c.type === 'animation') {
-                    contentDesc = `🎬 [قيف سري]${c.caption ? '\n' + c.caption : ''}`;
-                }
-
-                // إرسال المحتوى للمستلم في الخاص لضمان الخصوصية التامة وعدم كشفها بالقروب
                 try {
                     if (c.type === 'sticker') {
                         await ctx.telegram.sendSticker(userId, c.value);
@@ -570,7 +556,7 @@ bot.on('callback_query', async (ctx) => {
                     } else if (c.type === 'animation') {
                         await ctx.telegram.sendAnimation(userId, c.value, { caption: c.caption || '' });
                     } else {
-                        await ctx.telegram.sendMessage(userId, contentDesc);
+                        await ctx.telegram.sendMessage(userId, `💌 محتوى الهمسة:\n\n${c.value}`);
                     }
                 } catch (e) {}
 
