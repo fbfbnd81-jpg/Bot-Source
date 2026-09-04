@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = http = require('http');
+const http = require('http');
 const fs = require('fs');
 const https = require('https');
 
@@ -213,7 +213,6 @@ bot.on('message', async (ctx) => {
 
                 const botInfo = await ctx.telegram.getMe();
                 
-                // إرسال الهمسة للقروب بشكل مؤكد
                 await ctx.telegram.sendMessage(repInfo.chatId, 
                     `• ياحلو ↤ [${originalSenderName}](tg://user?id=${originalSenderId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
                     parse_mode: 'Markdown',
@@ -317,4 +316,4 @@ bot.on('callback_query', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
+ج
