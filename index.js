@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = require('http');
+const http = http = require('http');
 const fs = require('fs');
 const https = require('https');
 
@@ -113,7 +113,6 @@ bot.on('message', async (ctx) => {
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isTheDev1 = isDev1(userId, username);
 
-        // التعامل مع محتوى الهمسة في الخاص
         if (ctx.chat.type === 'private') {
             if (db.pendingWhispers && db.pendingWhispers[userId]) {
                 const whInfo = db.pendingWhispers[userId];
@@ -143,10 +142,9 @@ bot.on('message', async (ctx) => {
                 };
                 delete db.pendingWhispers[userId];
                 saveData();
-
-                const botInfo = await ctx.telegram.getMe();
                 
                 try {
+                    // إرسال الهمسة للقروب بشكل بطاقة سرية مخصصة للمستلم فقط
                     await ctx.telegram.sendMessage(whInfo.chatId, 
                         `• ياحلو ↤ [${whInfo.targetName}](tg://user?id=${whInfo.targetId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
                         parse_mode: 'Markdown',
@@ -162,7 +160,6 @@ bot.on('message', async (ctx) => {
                 return ctx.reply('• تم ارسال الهمسة');
             }
 
-            // التعامل مع الرد على الهمسة في الخاص
             if (db.pendingReply && db.pendingReply[userId]) {
                 const repInfo = db.pendingReply[userId];
                 const senderId = repInfo.senderId;
@@ -199,7 +196,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // 🤫 بدء الهمسة من القروب
         if (text === 'اهمس' || text === 'همسه' || text === 'ه') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على رسالة الشخص المراد اهماسه.', { reply_to_message_id: ctx.message.message_id });
@@ -233,7 +229,6 @@ bot.on('message', async (ctx) => {
             });
         }
 
-        // 🎵 ميزة بحث الأغاني من يوتيوب
         if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
             const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
             if (!query) {
@@ -537,7 +532,6 @@ bot.on('callback_query', async (ctx) => {
         const userId = ctx.from.id;
         const name = ctx.from.first_name || 'المستخدم';
 
-        // التعامل مع أزرار الهمسة
         if (data.startsWith('wh_')) {
             const parts = data.split('_');
             const action = parts[1]; // view أو reply
@@ -554,19 +548,32 @@ bot.on('callback_query', async (ctx) => {
                     return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
                 }
 
-                // إرسال محتوى الهمسة للمستلم
+                // إرسال محتوى الهمسة للمستلم في الخاص حصراً (أو إشعار تنبيهي منبثق سري) لضمان عدم ظهورها بالقروب تماماً
                 const c = wh.content;
+                let contentDesc = '';
                 if (c.type === 'text') {
-                    await ctx.reply(`💌 محتوى الهمسة:\n\n${c.value}`);
+                    contentDesc = `💌 محتوى الهمسة:\n\n${c.value}`;
                 } else if (c.type === 'sticker') {
-                    await ctx.replyWithSticker(c.value);
+                    contentDesc = '📦 [ملصق سري]';
                 } else if (c.type === 'photo') {
-                    await ctx.replyWithPhoto(c.value, { caption: c.caption || '' });
+                    contentDesc = `📷 [صورة سرية]${c.caption ? '\n' + c.caption : ''}`;
                 } else if (c.type === 'animation') {
-                    await ctx.replyWithAnimation(c.value, { caption: c.caption || '' });
+                    contentDesc = `🎬 [قيف سري]${c.caption ? '\n' + c.caption : ''}`;
                 }
 
-                // إرسال إشعار للمرسل مرة واحدة فقط عند الرؤية الأولى
+                // إرسال المحتوى للمستلم في الخاص لضمان الخصوصية التامة وعدم كشفها بالقروب
+                try {
+                    if (c.type === 'sticker') {
+                        await ctx.telegram.sendSticker(userId, c.value);
+                    } else if (c.type === 'photo') {
+                        await ctx.telegram.sendPhoto(userId, c.value, { caption: c.caption || '' });
+                    } else if (c.type === 'animation') {
+                        await ctx.telegram.sendAnimation(userId, c.value, { caption: c.caption || '' });
+                    } else {
+                        await ctx.telegram.sendMessage(userId, contentDesc);
+                    }
+                } catch (e) {}
+
                 if (!wh.seen) {
                     wh.seen = true;
                     saveData();
@@ -575,7 +582,7 @@ bot.on('callback_query', async (ctx) => {
                     } catch (e) {}
                 }
 
-                return ctx.answerCbQuery('تم عرض الهمسة بنجاح');
+                return ctx.answerCbQuery('تم كشف الهمسة لك في الخاص بنجاح ✓', { show_alert: true });
             }
 
             if (action === 'reply') {
@@ -589,8 +596,8 @@ bot.on('callback_query', async (ctx) => {
                 };
                 saveData();
 
-                await ctx.reply('• أرسل الآن ردك على الهمسة في هذه المحادثة الخاصة:');
-                return ctx.answerCbQuery();
+                await ctx.telegram.sendMessage(userId, '• أرسل الآن ردك على الهمسة في هذه المحادثة الخاصة:');
+                return ctx.answerCbQuery('تم فتح نافذة الرد في الخاص', { show_alert: true });
             }
         }
 
