@@ -262,7 +262,7 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // --- نظام الألعاب والتفاعل الحقيقي ---
+        // --- نظام الألعاب والتفاعل الحقيقي بدون إزعاج عند الخطأ ---
         if (db.activeGames && db.activeGames[chatId]) {
             const game = db.activeGames[chatId];
             const timeElapsed = ((Date.now() - game.startTime) / 1000).toFixed(1);
@@ -276,8 +276,8 @@ bot.on('message', async (ctx) => {
 
                 return ctx.reply(`صح عليك! 👏\nالمستخدم: [${name}](tg://user?id=${userId})\nالوقت المستغرق: ${timeElapsed} ثانية\nالسرعة ممتازة!\nتم إضافة 10 ريال وهمية لرصيدك. رصيدك الحالي: ${db.money[userId]} ريال`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             } else {
-                // إذا كتب خطأ أثناء اللعبة النشطة
-                return ctx.reply(`خطأ! الإجابة غير صحيحة، حاول مجدداً.`, { reply_to_message_id: ctx.message.message_id });
+                // إذا أجاب بشكل خاطئ، لا يرد البوت نهائياً (يتجاهل الرسالة تماماً لكي لا يزعج القروب)
+                return;
             }
         }
 
@@ -301,7 +301,7 @@ bot.on('message', async (ctx) => {
             };
             saveData();
 
-            return ctx.reply(`• سؤال / لغز جديد:\n${randomQ.q}\n\n• أجب بالكلمة الصحيحة بأسرع وقت لتربح 10 ريال وهمية!`, { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• سؤال / لغز جديد:\n${randomQ.q}`, { reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'سرعة' || text === 'أسرع') {
@@ -315,7 +315,7 @@ bot.on('message', async (ctx) => {
             };
             saveData();
 
-            return ctx.reply(`• تحدي السرعة! ارتب أو اكتب الكلمة التالية بأسرع وقت:\n\n💬 **${randomWord}**`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(`• تحدي السرعة! رتب أو اكتب الكلمة التالية:\n\n💬 **${randomWord}**`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
         if (text === 'فلوسي' || text === 'رصيدي') {
