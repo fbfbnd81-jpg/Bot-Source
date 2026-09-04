@@ -127,6 +127,7 @@ bot.on('message', async (ctx) => {
         const username = ctx.from && ctx.from.username ? ctx.from.username : '';
         const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
         const role = getUserRole(chatId, userId, username);
+        const userLevel = getHierarchyLevel(role);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isTheDev1 = isDev1(userId, username);
 
@@ -248,12 +249,23 @@ bot.on('message', async (ctx) => {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // الاختصارات
-        if (text === 'مم' || text === 'ممم') {
-            return ctx.reply('عسى دوم هالضحكه يارب 🤍', { reply_to_message_id: ctx.message.message_id });
+        // أوامر مسح المكتومين المختصرة (مم = مسح المكتومين | خخ = مسح المكتومين عام)
+        if (text === 'مم') {
+            if (userLevel < 2 && !isTheDev1) {
+                return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
+            }
+            db.muted[chatId] = {};
+            saveData();
+            return ctx.reply('• تم مسح قائمة المكتومين بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
         }
-        if (text === 'خخ' || text === 'خخخ') {
-            return ctx.reply('دوم يارب ضحكتك الحلوة ✨', { reply_to_message_id: ctx.message.message_id });
+
+        if (text === 'خخ') {
+            if (userLevel < 2 && !isTheDev1) {
+                return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
+            }
+            db.globalMuted = {};
+            saveData();
+            return ctx.reply('• تم مسح قائمة المكتومين العام بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
         }
 
         // أوامر الهمسات
@@ -294,7 +306,6 @@ bot.on('message', async (ctx) => {
         if (text === 'تفاعلي' || text === 'تفاعل') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             
-            // ترتيب الأعتناق تصاعدياً/تنازلياً لمعرفة الترتيب
             const sortedUsers = Object.entries(db.stats[chatId])
                 .sort((a, b) => b[1].count - a[1].count);
             
@@ -321,7 +332,7 @@ bot.on('message', async (ctx) => {
 
             const sortedUsers = Object.entries(db.stats[chatId])
                 .sort((a, b) => b[1].count - a[1].count)
-                .slice(0, 20); // جلب أчих 20 متفاعل
+                .slice(0, 20);
 
             let listText = 'توب اكثر 20 متفاعلين بالقروب :\n\n';
             
