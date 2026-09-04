@@ -97,11 +97,14 @@ bot.start(async (ctx) => {
 
                     if (!db.pendingReplies) db.pendingReplies = {};
                     db.pendingReplies[ctx.from.id] = {
-                        senderId: wh.senderId
+                        senderId: wh.senderId,
+                        chatId: wh.chatId,
+                        originalTargetId: wh.targetId,
+                        originalTargetName: wh.targetName
                     };
                     saveData();
 
-                    return ctx.reply('• أرسل الآن ردك على الهمسة في هذه المحادثة الخاصة:');
+                    return ctx.reply('• أرسل الآن ردك (يمكنك إرسال نص، صورة، ملصق، قيف):');
                 }
             }
         }
@@ -149,7 +152,7 @@ bot.on('message', async (ctx) => {
                 } else if (ctx.message.animation) {
                     contentData = { type: 'animation', value: ctx.message.animation.file_id, caption: ctx.message.caption || '' };
                 } else {
-                    return ctx.reply('نوع المحتوى غير مدعوم للهمسة. يرجى إرسال نص أو ملصق أو صورة أو قيف.');
+                    return ctx.reply('نوع المحتوى غير مدعوم. يرجى إرسال نص أو ملصق أو صورة أو قيف.');
                 }
 
                 if (!db.whispers) db.whispers = {};
@@ -183,16 +186,48 @@ bot.on('message', async (ctx) => {
 
             if (db.pendingReplies && db.pendingReplies[userId]) {
                 const repInfo = db.pendingReplies[userId];
-                const senderId = repInfo.senderId;
+                const wId = Date.now().toString() + Math.floor(Math.random() * 1000);
 
-                let replyContent = ctx.message.text || 'محتوى مرئي للرد';
-                try {
-                    await ctx.telegram.sendMessage(senderId, `📩 وصلك رد جديد على همستك من [${name}](tg://user?id=${userId}):\n\n${replyContent}`, { parse_mode: 'Markdown' });
-                } catch (e) {}
+                let contentData = { type: 'text', value: '' };
+                if (ctx.message.text) {
+                    contentData = { type: 'text', value: ctx.message.text };
+                } else if (ctx.message.sticker) {
+                    contentData = { type: 'sticker', value: ctx.message.sticker.file_id };
+                } else if (ctx.message.photo) {
+                    contentData = { type: 'photo', value: ctx.message.photo[ctx.message.photo.length - 1].file_id, caption: ctx.message.caption || '' };
+                } else if (ctx.message.animation) {
+                    contentData = { type: 'animation', value: ctx.message.animation.file_id, caption: ctx.message.caption || '' };
+                } else {
+                    return ctx.reply('نوع المحتوى غير مدعوم للرد.');
+                }
 
+                if (!db.whispers) db.whispers = {};
+                db.whispers[wId] = {
+                    senderId: userId,
+                    senderName: name,
+                    targetId: repInfo.senderId,
+                    targetName: repInfo.originalTargetName || 'المستخدم',
+                    content: contentData,
+                    seen: false
+                };
                 delete db.pendingReplies[userId];
                 saveData();
-                return ctx.reply('• تم ارسال الرد بنجاح');
+
+                const botInfo = await ctx.telegram.getMe();
+                try {
+                    await ctx.telegram.sendMessage(repInfo.chatId, 
+                        `• ياحلو ↤ [${repInfo.senderId === repInfo.originalTargetId ? repInfo.originalTargetName : 'المستخدم'}](tg://user?id=${repInfo.senderId})\n\n• وصلك رد على الهمسة من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفه`, {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'رؤية الهمسه', callback_data: `wh_view_${wId}` }],
+                                [{ text: 'رد على الهمسه', url: `https://t.me/${botInfo.username}?start=start_reply_${wId}` }]
+                            ]
+                        }
+                    });
+                } catch (e) {}
+
+                return ctx.reply('• تم ارسال الرد كهمسة بنجاح');
             }
 
             return;
