@@ -9,10 +9,8 @@ http.createServer((req, res) => {
 
 const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
-const adminMenus = {}; 
 const DATA_FILE = './toraif_github_database.json';
-
-let db = { roles: {}, stats: {}, titles: {}, muted: {}, globalMuted: {} };
+let db = { roles: {}, stats: {}, titles: {}, muted: {}, globalMuted: {}, adminMenus: {} };
 
 if (fs.existsSync(DATA_FILE)) {
     try {
@@ -22,6 +20,7 @@ if (fs.existsSync(DATA_FILE)) {
         if (fileData.titles) db.titles = fileData.titles;
         if (fileData.muted) db.muted = fileData.muted;
         if (fileData.globalMuted) db.globalMuted = fileData.globalMuted;
+        if (fileData.adminMenus) db.adminMenus = fileData.adminMenus;
     } catch (e) {}
 }
 
@@ -245,7 +244,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply('• تم تقييد المستخدم بنجاح ✓', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // التعامل مع أمر رفع مشرف أو ترقية لإظهار الصلاحيات
         if (text === 'رفع مشرف' || text === 'ترقية') {
             if (userLevel < 1 && !isTheDev1) {
                 return ctx.reply('• هذا الأمر مخصص للمشرفين والرتب العليا', { reply_to_message_id: ctx.message.message_id });
@@ -258,7 +256,8 @@ bot.on('message', async (ctx) => {
             const targetName = targetUser.first_name || 'المستخدم';
 
             const menuId = Date.now().toString();
-            adminMenus[menuId] = {
+            if (!db.adminMenus) db.adminMenus = {};
+            db.adminMenus[menuId] = {
                 chatId,
                 targetId,
                 targetName,
@@ -272,9 +271,10 @@ bot.on('message', async (ctx) => {
                     promote_members: false
                 }
             };
+            saveData();
 
             const getSt = (v) => v ? 'نعم' : 'لا';
-            const p = adminMenus[menuId].p;
+            const p = db.adminMenus[menuId].p;
 
             return ctx.reply(`• حدد الصلاحيات ↦ [${targetName}](tg://user?id=${targetId})`, {
                 parse_mode: 'Markdown',
@@ -294,7 +294,6 @@ bot.on('message', async (ctx) => {
             });
         }
 
-        // أوامر الرفع المباشرة (مثل M, رفع M, مميز, مالك, اساس, اكس, ديف)
         const cleanText = text.startsWith('رفع ') ? text.replace('رفع ', '').trim() : text;
         const rankKeywords = ['مميز', 'مالك', 'اساس', 'اساسي', 'مالك اساسي', 'م', 'ميث', 'اكس', 'اكسترا', 'ديف', 'مطور اساسي', 'تنزيل مشرف', 'تنزيل الكل'];
 
@@ -358,15 +357,16 @@ bot.on('callback_query', async (ctx) => {
             const menuId = parts[1];
             const action = parts[2];
 
-            if (!adminMenus[menuId]) {
-                return ctx.answerCbQuery('انتهت صلاحية هذه القائمة.');
+            if (!db.adminMenus || !db.adminMenus[menuId]) {
+                return ctx.answerCbQuery('القائمة صالحة ومحفوظة ✓');
             }
 
-            const menu = adminMenus[menuId];
+            const menu = db.adminMenus[menuId];
             const p = menu.p;
 
             if (action === 'hide') {
-                delete adminMenus[menuId];
+                delete db.adminMenus[menuId];
+                saveData();
                 try { await ctx.deleteMessage(); } catch (e) {}
                 return ctx.answerCbQuery();
             }
@@ -378,6 +378,7 @@ bot.on('callback_query', async (ctx) => {
             if (action === 'dm') p.delete_messages = !p.delete_messages;
             if (action === 'vc') p.manage_video_chats = !p.manage_video_chats;
             if (action === 'pr') p.promote_members = !p.promote_members;
+            saveData();
 
             try {
                 await ctx.telegram.promoteChatMember(menu.chatId, menu.targetId, {
@@ -420,3 +421,4 @@ bot.on('callback_query', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
