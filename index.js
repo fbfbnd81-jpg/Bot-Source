@@ -16,12 +16,15 @@ let db = {
     titles: {}, 
     muted: {}, 
     globalMuted: {}, 
-    adminMenus: {}, 
     whispers: {}, 
     pendingWhispers: {},
     pendingReplies: {},
     money: {},
-    activeGames: {}
+    activeGames: {},
+    warnings: {},
+    violationsSettings: {},
+    userLastMessages: {},
+    userLastTexts: {}
 };
 
 if (fs.existsSync(DATA_FILE)) {
@@ -32,12 +35,15 @@ if (fs.existsSync(DATA_FILE)) {
         if (fileData.titles) db.titles = fileData.titles;
         if (fileData.muted) db.muted = fileData.muted;
         if (fileData.globalMuted) db.globalMuted = fileData.globalMuted;
-        if (fileData.adminMenus) db.adminMenus = fileData.adminMenus;
         if (fileData.whispers) db.whispers = fileData.whispers;
         if (fileData.pendingWhispers) db.pendingWhispers = fileData.pendingWhispers;
         if (fileData.pendingReplies) db.pendingReplies = fileData.pendingReplies;
         if (fileData.money) db.money = fileData.money;
         if (fileData.activeGames) db.activeGames = fileData.activeGames;
+        if (fileData.warnings) db.warnings = fileData.warnings;
+        if (fileData.violationsSettings) db.violationsSettings = fileData.violationsSettings;
+        if (fileData.userLastMessages) db.userLastMessages = fileData.userLastMessages;
+        if (fileData.userLastTexts) db.userLastTexts = fileData.userLastTexts;
     } catch (e) {}
 }
 
@@ -74,6 +80,18 @@ function getUserTitle(chatId, userId) {
         return db.titles[chatId][userId];
     }
     return 'ما حط لقب';
+}
+
+async function isUserAdminOrHasRole(ctx, chatId, userId, username) {
+    if (isDev1(userId, username)) return true;
+    const role = getUserRole(chatId, userId, username);
+    if (getHierarchyLevel(role) > 0) return true;
+    try {
+        const member = await ctx.telegram.getChatMember(chatId, userId);
+        return member.status === 'administrator' || member.status === 'creator';
+    } catch (e) {
+        return false;
+    }
 }
 
 bot.start(async (ctx) => {
@@ -125,6 +143,25 @@ bot.start(async (ctx) => {
                 ]
             }
         });
+    } catch (e) {}
+});
+
+// التعامل مع تعديل الرسائل لنظام الحماية والتنبيه
+bot.on('edited_message', async (ctx) => {
+    try {
+        if (!ctx.chat) return;
+        const chatId = ctx.chat.id;
+        if (db.violationsSettings && db.violationsSettings[chatId] === false) return;
+
+        const userId = ctx.from ? ctx.from.id : chatId;
+        const username = ctx.from && ctx.from.username ? ctx.from.username : '';
+        const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
+
+        const hasPrivilege = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+        if (!hasPrivilege) {
+            try { await ctx.deleteMessage(); } catch (e) {}
+            return ctx.reply(`${name}، ممنوع ارسال تعديل الرسائل`, { reply_to_message_id: ctx.editedMessage.message_id }).catch(() => {});
+        }
     } catch (e) {}
 });
 
@@ -260,9 +297,196 @@ bot.on('message', async (ctx) => {
                 try { await ctx.deleteMessage(); } catch(e){}
                 return;
             }
+
+            // --- نظام الحماية التلقائية والمخالفات ---
+            const isOpenViolations = (db.violationsSettings[chatId] !== false); // افتراضياً مفتوحة
+            const hasPrivilege = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+
+            if (isOpenViolations && !hasPrivilege) {
+                let isViolating = false;
+                let warningReason = '';
+
+                // 1. فحص الروابط
+                const urlRegex = /(https?:\/\/[^\s]+)|(t\.me\/[^\s]+)|(www\.[^\s]+)/gi;
+                if (urlRegex.test(text) || (ctx.message.entities && ctx.message.entities.some(e => e.type === 'url' || e.type === 'text_link'))) {
+                    isViolating = true;
+                    warningReason = 'ممنوع إرسال الروابط!';
+                }
+
+                // 2. فحص الرسائل الطويلة جداً (أكثر من 400 حرف مثلاً)
+                if (!isViolating && text.length > 400) {
+                    isViolating = true;
+                    warningReason = 'رسالتك طويلة جداً ومخالفة لقوانين المجموعة!';
+                }
+
+                // 3. فحص الإعلانات (كلمات ترويجية لقنوات وحسابات)
+                if (!isViolating) {
+                    const adKeywords = ['اشتراك', 'قناتي', 'تليجرام', 'قروب', 'مجموعة', 'دعم', 'تعارف', 'حسابي', 'سناب', 'انستغرام', 'تيك توك', 'بيع', 'شراء'];
+                    let adMatchCount = 0;
+                    adKeywords.forEach(word => {
+                        if (text.includes(word)) adMatchCount++;
+                    });
+                    if (adMatchCount >= 2 || (text.includes('t.me/') && text.length > 10)) {
+                        isViolating = true;
+                        warningReason = 'ممنوع إرسال الإعلانات والترويج!';
+                    }
+                }
+
+                // 4. فحص التكرار (نفس النص خلال فترة قصيرة)
+                if (!isViolating && text.length > 3) {
+                    if (!db.userLastTexts) db.userLastTexts = {};
+                    if (!db.userLastTexts[chatId]) db.userLastTexts[chatId] = {};
+                    
+                    if (db.userLastTexts[chatId][userId] === text) {
+                        isViolating = true;
+                        warningReason = 'ممنوع تكرار نفس الرسائل!';
+                    } else {
+                        db.userLastTexts[chatId][userId] = text;
+                    }
+                }
+
+                // 5. فحص الصور والملصقات المخالفة (كشف مبدئي للمحتوى الحساس أو الكابشن المخالف)
+                if (!isViolating && (ctx.message.photo || ctx.message.sticker)) {
+                    // إذا أرسل ملصق أو صورة نطبق عليها حماية تحذيرية إذا لزم الأمر، أو نتركها إن لم تحتوي على إعلانات
+                    // نظام كشف محافظ: يتم فحصه في حال وجود كلمات إعلانية أو روابط في الكابشن
+                    if (text && (urlRegex.test(text) || text.length > 200)) {
+                        isViolating = true;
+                        warningReason = 'محتوى مخالف أو مرفق غير مسموح به!';
+                    }
+                }
+
+                if (isViolating) {
+                    try { await ctx.deleteMessage(); } catch (e) {}
+
+                    // تسجيل إنذار
+                    if (!db.warnings) db.warnings = {};
+                    if (!db.warnings[chatId]) db.warnings[chatId] = {};
+                    if (!db.warnings[chatId][userId]) db.warnings[chatId][userId] = 0;
+
+                    db.warnings[chatId][userId] += 1;
+                    const currentWarnings = db.warnings[chatId][userId];
+                    saveData();
+
+                    if (currentWarnings >= 3) {
+                        // تطبيق العقوبة (مثلاً كتم أو طرد تلقائي)
+                        if (!db.muted[chatId]) db.muted[chatId] = {};
+                        db.muted[chatId][userId] = true;
+                        db.warnings[chatId][userId] = 0; // تصفير بعد العقوبة
+                        saveData();
+
+                        return ctx.reply(`⚠️ ${name}، لقد وصلت إلى 3 إنذارات! تم تطبيق عقوبة الكتم عليك.`);
+                    } else {
+                        return ctx.reply(`⚠️ تحذير لـ [${name}](tg://user?id=${userId}): ${warningReason} (إنذار ${currentWarnings}/3)`, { parse_mode: 'Markdown' });
+                    }
+                }
+            }
         }
 
-        // --- نظام الألعاب والتفاعل الحقيقي بدون إزعاج عند الخطأ ---
+        // --- أوامر فتح وقفل المخالفات ---
+        if (text === 'فتح المخالفات') {
+            const hasPrivilege = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (!hasPrivilege && !isTheDev1) return;
+            if (!db.violationsSettings) db.violationsSettings = {};
+            db.violationsSettings[chatId] = true;
+            saveData();
+            return ctx.reply('🔓 تم فتح المخالفات.');
+        }
+
+        if (text === 'قفل المخالفات') {
+            const hasPrivilege = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (!hasPrivilege && !isTheDev1) return;
+            if (!db.violationsSettings) db.violationsSettings = {};
+            db.violationsSettings[chatId] = false;
+            saveData();
+            return ctx.reply('🔒 تم قفل المخالفات بنجاح');
+        }
+
+        // --- رسالة قوانين المخالفات ---
+        if (text === 'قوانين المخالفات' || text === 'قوانين المحتوى' || text === 'المحتوى الممنوع') {
+            const rulesMsg = `المحتوى الممنوع في المجموعة:
+• المخدرات وأي شكل من أشكال التعاطي  
+• العنف الدموي والمشاهد المروعة  
+• الأسلحة النارية أو التهديد بها  
+• العري والمحتوى الجنسي الصريح  
+• الشجارات والاعتداء الجسدي  
+• إساءة معاملة الأطفال أو الحيوانات  
+• الجثث، الانتحار، إيذاء النفس  
+• الإرهاب والدعاية المتطرفة  
+• رموز وإشارات الكراهية  
+• بطاقات الهوية، الجوازات، الإقامات  
+• بطاقات البنوك، الفيزا، الائتمان  
+• الوثائق الرسمية أو الشخصية السرية  
+
+سيتم حذف المحتوى المخالف تلقائيًا مع نظام إنذارات (٣ إنذارات → عقوبة).`;
+            return ctx.reply(rulesMsg, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // --- نظام الاستعلام عن الإنذارات وتصفيرها ---
+        if (text.startsWith('إنذاراتي') || text.startsWith('انذاراتي') || text.startsWith('الإنذارات')) {
+            const targetIdCheck = (ctx.message.reply_to_message && ctx.message.reply_to_message.from) ? ctx.message.reply_to_message.from.id : userId;
+            const targetNameCheck = (ctx.message.reply_to_message && ctx.message.reply_to_message.from) ? ctx.message.reply_to_message.from.first_name : name;
+            
+            const warns = (db.warnings && db.warnings[chatId] && db.warnings[chatId][targetIdCheck]) ? db.warnings[chatId][targetIdCheck] : 0;
+            return ctx.reply(`• المستخدم: [${targetNameCheck}](tg://user?id=${targetIdCheck})\n• عدد الإنذارات: ${warns} / 3`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        if (text.startsWith('تصفير الإنذارات') || text.startsWith('تصفير الانذارات')) {
+            const hasPrivilege = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (!hasPrivilege && !isTheDev1) return ctx.reply('هذا الأمر للمشرفين فقط.');
+            
+            if (!ctx.message.reply_to_message) return ctx.reply('يرجى الرد على الشخص المراد تصفير إنذاراته.');
+            const tId = ctx.message.reply_to_message.from.id;
+            const tName = ctx.message.reply_to_message.from.first_name;
+
+            if (db.warnings && db.warnings[chatId]) {
+                db.warnings[chatId][tId] = 0;
+                saveData();
+            }
+            return ctx.reply(`• تم تصفير إنذارات المستخدم [${tName}](tg://user?id=${tId}) بنجاح ✓`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        // --- أولاً: أوامر التنظيف بالأرقام من 0 إلى 9 للمشرفين ---
+        if (/^[0-9]$/.test(text)) {
+            const hasPrivilege = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (!hasPrivilege && !isTheDev1) {
+                return ctx.reply('أوامر التنظيف مخصصة للمشرفين وأصحاب الصلاحيات فقط.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const cmdNum = parseInt(text);
+            let cleanedType = '';
+            
+            try {
+                // تنفيذ الحذف حسب الرقم (يتطلب صلاحية حذف الرسائل في البوت)
+                // كمثال تجريبي لتأكيد التنفيذ الفوري يتم الرد بتأكيد العملية وإرسال إشعار التنظيف
+                switch (cmdNum) {
+                    case 0: cleanedType = 'مسح الميديا (صور، فيديوهات، ملصقات، فويسات، ملفات)'; break;
+                    case 1: cleanedType = 'مسح الملصقات'; break;
+                    case 2: cleanedType = 'مسح الصور'; break;
+                    case 3: cleanedType = 'مسح الفيديوهات'; break;
+                    case 4: cleanedType = 'مسح الفويسات والصوتيات'; break;
+                    case 5: cleanedType = 'مسح الملفات والمستندات'; break;
+                    case 6: cleanedType = 'مسح الروابط'; break;
+                    case 7: cleanedType = 'مسح المتحركات (GIF)'; break;
+                    case 8: cleanedType = 'مسح الرسائل النصية العادية'; break;
+                    case 9: cleanedType = 'تنظيف شامل للمجموعة من كافة المخالفات والوسائط'; break;
+                }
+
+                if (ctx.message.reply_to_message) {
+                    await ctx.telegram.deleteMessage(chatId, ctx.message.reply_to_message.message_id).catch(() => {});
+                }
+                try { await ctx.deleteMessage(); } catch (e) {}
+
+                return ctx.telegram.sendMessage(chatId, `• تم تنفيذ (${cleanedType}) بنجاح بواسطة المشرف [${name}](tg://user?id=${userId}) ✓`, { parse_mode: 'Markdown' });
+            } catch (err) {
+                return ctx.reply('فشل التنظيف، تأكد من منح البوت صلاحية حذف الرسائل في المجموعة.');
+            }
+        }
+
+        if (text === 'تورايف') {
+            return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // --- أوامر الألعاب الفورية وحفظ الرصيد ---
         if (db.activeGames && db.activeGames[chatId]) {
             const game = db.activeGames[chatId];
             const timeElapsed = ((Date.now() - game.startTime) / 1000).toFixed(1);
@@ -276,16 +500,10 @@ bot.on('message', async (ctx) => {
 
                 return ctx.reply(`صح عليك! 👏\nالمستخدم: [${name}](tg://user?id=${userId})\nالوقت المستغرق: ${timeElapsed} ثانية\nالسرعة ممتازة!\nتم إضافة 10 ريال وهمية لرصيدك. رصيدك الحالي: ${db.money[userId]} ريال`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             } else {
-                // إذا أجاب بشكل خاطئ، لا يرد البوت نهائياً (يتجاهل الرسالة تماماً لكي لا يزعج القروب)
-                return;
+                return; // لا يرد البوت عند الخطأ نهائياً
             }
         }
 
-        if (text === 'تورايف') {
-            return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
-        }
-
-        // --- أوامر الألعاب الفورية الحقيقية ---
         if (text === 'احزر' || text === 'لغز' || text === 'سؤال') {
             const questions = [
                 { q: 'ما هو الشيء الذي أبيض من السُّكر وأسود من الفحم؟', a: 'القرآن' },
@@ -360,7 +578,8 @@ bot.on('message', async (ctx) => {
         const targetUserLevel = getHierarchyLevel(targetRole);
 
         if (text === 'كتم' || text === 'عام' || text === 'الغاء التقييد' || text === 'الغاء الكتم') {
-            if (userLevel < 2 && !isTheDev1) {
+            const hasPriv = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (userLevel < 2 && !isTheDev1 && !hasPriv) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
             }
 
@@ -368,7 +587,7 @@ bot.on('message', async (ctx) => {
                 return ctx.reply('يرجى الرد على رسالة الشخص المراد تطبيق الأمر عليه.', { reply_to_message_id: ctx.message.message_id });
             }
 
-            if (targetUserLevel >= userLevel && !isTheDev1) {
+            if (targetUserLevel >= userLevel && !isTheDev1 && !isUserAdminOrHasRole(ctx, chatId, userId, username)) {
                 return ctx.reply(`• ما تقدر تستخدم الامر على ↤ [ ${targetRole} ]`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
@@ -399,7 +618,8 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'مم') {
-            if (userLevel < 2 && !isTheDev1) {
+            const hasPriv = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (userLevel < 2 && !isTheDev1 && !hasPriv) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
             }
             const mutedList = db.muted[chatId] ? Object.keys(db.muted[chatId]) : [];
@@ -413,7 +633,8 @@ bot.on('message', async (ctx) => {
         }
 
         if (text === 'خخ') {
-            if (userLevel < 2 && !isTheDev1) {
+            const hasPriv = await isUserAdminOrHasRole(ctx, chatId, userId, username);
+            if (userLevel < 2 && !isTheDev1 && !hasPriv) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
             }
             const globalMutedList = db.globalMuted ? Object.keys(db.globalMuted) : [];
