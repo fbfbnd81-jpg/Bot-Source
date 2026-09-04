@@ -100,6 +100,18 @@ function getUserTitle(chatId, userId) {
     return 'ما حط لقب';
 }
 
+async function isUserAdminOrHasRole(ctx, chatId, userId, username) {
+    if (isDev1(userId, username)) return true;
+    const role = getUserRole(chatId, userId, username);
+    if (getHierarchyLevel(role) > 0) return true;
+    try {
+        const member = await ctx.telegram.getChatMember(chatId, userId);
+        return member.status === 'administrator' || member.status === 'creator';
+    } catch (e) {
+        return false;
+    }
+}
+
 bot.start(async (ctx) => {
     try {
         if (ctx.chat.type === 'private') {
@@ -364,7 +376,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- تعديل الشكل ليطابق الصور المطلوبة تماماً ---
         let targetId = userId;
         let targetName = name;
         let targetUsername = username;
@@ -378,6 +389,7 @@ bot.on('message', async (ctx) => {
         const targetRole = getUserRole(chatId, targetId, targetUsername);
         const targetUserLevel = getHierarchyLevel(targetRole);
 
+        // --- تحديث شكل أمر "تفاعلي" أو "رتبتي" ليطابق الصورة بالضبط ---
         if (text === 'تفاعلي' || text === 'رتبتي') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             const count = db.stats[chatId][targetId] ? db.stats[chatId][targetId].count : 0;
@@ -389,12 +401,13 @@ bot.on('message', async (ctx) => {
             return ctx.reply(exactReply);
         }
 
+        // --- تحديث شكل أمر "المتفاعلين" أو "التوب" ليطابق الصورة بالضبط ---
         if (text === 'المتفاعلين' || text === 'التوب') {
             if (!db.stats[chatId]) return ctx.reply('لا توجد إحصائيات تفاعل.');
             const sorted = Object.entries(db.stats[chatId]).sort((a,b)=>b[1].count - a[1].count).slice(0, 20);
             let msg = 'توب اكتر 20 متفاعلين بالقروب :\n\n';
             sorted.forEach(([uId, data], i) => {
-                msg += `${i + 1} ) ${data.count} | ${data.name}\n`;
+                msg += `${i + 1}) ${data.count} | ${data.name}\n`;
             });
             return ctx.reply(msg);
         }
