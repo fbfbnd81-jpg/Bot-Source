@@ -65,6 +65,13 @@ function getUserRole(chatId, userId, username) {
     return 'عضو';
 }
 
+function getUserTitle(chatId, userId) {
+    if (db.titles && db.titles[chatId] && db.titles[chatId][userId]) {
+        return db.titles[chatId][userId];
+    }
+    return 'ما حط لقب';
+}
+
 bot.start(async (ctx) => {
     try {
         if (ctx.chat.type === 'private') {
@@ -242,7 +249,6 @@ bot.on('message', async (ctx) => {
             db.stats[chatId][userId].name = name;
             saveData();
 
-            // فحص كتم المستخدم إذا كان مكتومًا
             if (db.muted[chatId] && db.muted[chatId][userId]) {
                 try { await ctx.deleteMessage(); } catch(e){}
                 return;
@@ -258,7 +264,22 @@ bot.on('message', async (ctx) => {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- نظام الكتم (كتم / عام / إلغاء التقييد) ---
+        // تحديد المستهدف (إذا كان هناك رد، يتم استهداف صاحب الرسالة المردود عليها، وإلا المستخدم نفسه)
+        let targetId = userId;
+        let targetName = name;
+        let targetUsername = username;
+
+        if (ctx.message.reply_to_message && ctx.message.reply_to_message.from) {
+            targetId = ctx.message.reply_to_message.from.id;
+            targetName = ctx.message.reply_to_message.from.first_name || 'المستخدم';
+            targetUsername = ctx.message.reply_to_message.from.username || '';
+        }
+
+        const targetRole = getUserRole(chatId, targetId, targetUsername);
+        const targetTitle = getUserTitle(chatId, targetId);
+        const targetUserLevel = getHierarchyLevel(targetRole);
+
+        // أوامر الكتم / عام / الغاء التقييد
         if (text === 'كتم' || text === 'عام' || text === 'الغاء التقييد' || text === 'الغاء الكتم') {
             if (userLevel < 2 && !isTheDev1) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
@@ -268,14 +289,7 @@ bot.on('message', async (ctx) => {
                 return ctx.reply('يرجى الرد على رسالة الشخص المراد تطبيق الأمر عليه.', { reply_to_message_id: ctx.message.message_id });
             }
 
-            const targetUser = ctx.message.reply_to_message.from;
-            const targetId = targetUser.id;
-            const targetName = targetUser.first_name || 'المستخدم';
-            const targetUsername = targetUser.username || '';
-            const targetRole = getUserRole(chatId, targetId, targetUsername);
-            const targetLevel = getHierarchyLevel(targetRole);
-
-            if (targetLevel >= userLevel && !isTheDev1) {
+            if (targetUserLevel >= userLevel && !isTheDev1) {
                 return ctx.reply(`• ما تقدر تستخدم الامر على ↤ [ ${targetRole} ]`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
@@ -287,32 +301,25 @@ bot.on('message', async (ctx) => {
                 if (!db.muted[chatId]) db.muted[chatId] = {};
                 db.muted[chatId][targetId] = true;
                 saveData();
-                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ]\n• كتمته`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n• كتمته`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'عام') {
                 if (!db.globalMuted) db.globalMuted = {};
                 db.globalMuted[targetId] = true;
                 saveData();
-                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ]\n• تم كتمه عام`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n• تم كتمه عام`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
 
             if (text === 'الغاء التقييد' || text === 'الغاء الكتم') {
-                let unmuted = false;
-                if (db.muted[chatId] && db.muted[chatId][targetId]) {
-                    delete db.muted[chatId][targetId];
-                    unmuted = true;
-                }
-                if (db.globalMuted && db.globalMuted[targetId]) {
-                    delete db.globalMuted[targetId];
-                    unmuted = true;
-                }
+                if (db.muted[chatId]) delete db.muted[chatId][targetId];
+                if (db.globalMuted) delete db.globalMuted[targetId];
                 saveData();
-                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ]\n• الغيت تقييده`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+                return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n• الغيت تقييده`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
             }
         }
 
-        // --- أوامر مسح المكتومين (مم / خخ) ---
+        // أوامر مسح المكتومين
         if (text === 'مم') {
             if (userLevel < 2 && !isTheDev1) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
@@ -348,23 +355,23 @@ bot.on('message', async (ctx) => {
             }
 
             const targetUser = ctx.message.reply_to_message.from;
-            const targetId = targetUser.id;
-            const targetName = targetUser.first_name || 'المستخدم';
+            const tId = targetUser.id;
+            const tName = targetUser.first_name || 'المستخدم';
 
-            if (targetId === userId) {
+            if (tId === userId) {
                 return ctx.reply('لا يمكنك إرسال همسة لنفسك.', { reply_to_message_id: ctx.message.message_id });
             }
 
             if (!db.pendingWhispers) db.pendingWhispers = {};
             db.pendingWhispers[userId] = {
                 chatId: chatId,
-                targetId: targetId,
-                targetName: targetName
+                targetId: tId,
+                targetName: tName
             };
             saveData();
 
             const botInfo = await ctx.telegram.getMe();
-            return ctx.reply(`• تم تحديد الهمسه لـ ↤ [${targetName}](tg://user?id=${targetId})\n\n• اضغط الزر لكتابة الهمسة`, {
+            return ctx.reply(`• تم تحديد الهمسه لـ ↤ [${tName}](tg://user?id=${tId})\n\n• اضغط الزر لكتابة الهمسة`, {
                 parse_mode: 'Markdown',
                 reply_to_message_id: ctx.message.message_id,
                 reply_markup: {
@@ -375,7 +382,7 @@ bot.on('message', async (ctx) => {
             });
         }
 
-        // أمر تفاعلي
+        // أمر تفاعلي (أو ريبلاي عليه)
         if (text === 'تفاعلي' || text === 'تفاعل') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             
@@ -384,17 +391,27 @@ bot.on('message', async (ctx) => {
             
             let userRank = 0;
             for (let i = 0; i < sortedUsers.length; i++) {
-                if (sortedUsers[i][0].toString() === userId.toString()) {
+                if (sortedUsers[i][0].toString() === targetId.toString()) {
                     userRank = i + 1;
                     break;
                 }
             }
 
-            const userStats = (db.stats[chatId][userId]) ? db.stats[chatId][userId].count : 0;
+            const userStats = (db.stats[chatId][targetId]) ? db.stats[chatId][targetId].count : 0;
             const finalRank = userRank > 0 ? userRank : (sortedUsers.length + 1);
 
-            const replyMsg = `🎖️ رتبتك هي ↤ ${role}\n\n• رسائلك بالتفاعل ↤ ${userStats}\n• ترتيبك بالممتفاعلين ↤ ${finalRank}\n-`;
-            return ctx.reply(replyMsg, { reply_to_message_id: ctx.message.message_id });
+            const replyMsg = `• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🎖️ رتبتك هي ↤ ${targetRole}\n• رسائلك بالتفاعل ↤ ${userStats}\n• ترتيبك بالممتفاعلين ↤ ${finalRank}\n-`;
+            return ctx.reply(replyMsg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أمر رتبته (أو ريبلاي عليه)
+        if (text === 'رتبته' || text === 'رتبتي') {
+            return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🎖️ رتبته ↤ ${targetRole}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أمر لقبه (أو ريبلاي عليه)
+        if (text === 'لقبه' || text === 'لقبي') {
+            return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🏷️ لقبه ↤ ${targetTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
         // أمر المتفاعلين (توب المتفاعلين)
@@ -415,10 +432,10 @@ bot.on('message', async (ctx) => {
                 else if (index === 1) medal = '🥈 )';
                 else if (index === 2) medal = '🥉 )';
 
-                listText += `${medal} ${data.count} | ${data.name}\n`;
+                listText += `${medal} ${data.count} | [${data.name}](tg://user?id=${uId})\n`;
             });
 
-            return ctx.reply(listText, { reply_to_message_id: ctx.message.message_id });
+            return ctx.reply(listText, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
     } catch (e) {
