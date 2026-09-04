@@ -51,7 +51,19 @@ function checkAdminPermission(chatId, userId, username) {
 
 bot.start(async (ctx) => {
     try {
-        return ctx.reply('أهلاً بك في بوت تورايف! البوت يعمل بنجاح.');
+        const botInfo = await ctx.telegram.getMe();
+        const botUsername = botInfo.username;
+        
+        const startText = `اهلا بك يا قلبي 🫶 - ُ\n\n• انا اشغل لك اللي تبي بالمكالمه\n\nادعم هالمنصات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.`;
+
+        return ctx.reply(startText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '➕ أضفني في مجموعتك', url: `https://t.me/${botUsername}?startgroup=true` }],
+                    [{ text: '👤 المطور', url: 'https://t.me/j4xa7' }]
+                ]
+            }
+        });
     } catch (e) {}
 });
 
