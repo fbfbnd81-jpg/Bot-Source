@@ -61,7 +61,7 @@ function getHierarchyLevel(role) {
 }
 
 function getUserRole(chatId, userId, username) {
-    if (isDev1(userId, username)) return 'Dev🎖️';
+    if (isDev1(userId, username)) return 'Dev ↤';
     if (db.roles[chatId] && db.roles[chatId][userId]) return db.roles[chatId][userId];
     return 'عضو';
 }
@@ -127,7 +127,6 @@ bot.on('message', async (ctx) => {
         const username = ctx.from && ctx.from.username ? ctx.from.username : '';
         const name = ctx.from && ctx.from.first_name ? ctx.from.first_name : 'المستخدم';
         const role = getUserRole(chatId, userId, username);
-        const userLevel = getHierarchyLevel(role);
         const text = (ctx.message.text || ctx.message.caption || '').trim();
         const isTheDev1 = isDev1(userId, username);
 
@@ -244,6 +243,19 @@ bot.on('message', async (ctx) => {
             saveData();
         }
 
+        // نداء البوت
+        if (text === 'تورايف') {
+            return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // الاختصارات
+        if (text === 'مم' || text === 'ممم') {
+            return ctx.reply('عسى دوم هالضحكه يارب 🤍', { reply_to_message_id: ctx.message.message_id });
+        }
+        if (text === 'خخ' || text === 'خخخ') {
+            return ctx.reply('دوم يارب ضحكتك الحلوة ✨', { reply_to_message_id: ctx.message.message_id });
+        }
+
         // أوامر الهمسات
         if (text === 'اهمس' || text === 'همسه' || text === 'ه') {
             if (!ctx.message.reply_to_message) {
@@ -278,15 +290,51 @@ bot.on('message', async (ctx) => {
             });
         }
 
-        // أمر رتبتي
-        if (text === 'رتبتي' || text === 'رتبه') {
-            return ctx.reply(`• رتبتك الحالية هي: ${role}`, { reply_to_message_id: ctx.message.message_id });
-        }
-
         // أمر تفاعلي
         if (text === 'تفاعلي' || text === 'تفاعل') {
-            const userStats = (db.stats[chatId] && db.stats[chatId][userId]) ? db.stats[chatId][userId].count : 0;
-            return ctx.reply(`• رسائلك المتفاعلة في هذه المجموعة هي: ${userStats} رسالة 💬`, { reply_to_message_id: ctx.message.message_id });
+            if (!db.stats[chatId]) db.stats[chatId] = {};
+            
+            // ترتيب الأعتناق تصاعدياً/تنازلياً لمعرفة الترتيب
+            const sortedUsers = Object.entries(db.stats[chatId])
+                .sort((a, b) => b[1].count - a[1].count);
+            
+            let userRank = 0;
+            for (let i = 0; i < sortedUsers.length; i++) {
+                if (sortedUsers[i][0].toString() === userId.toString()) {
+                    userRank = i + 1;
+                    break;
+                }
+            }
+
+            const userStats = (db.stats[chatId][userId]) ? db.stats[chatId][userId].count : 0;
+            const finalRank = userRank > 0 ? userRank : (sortedUsers.length + 1);
+
+            const replyMsg = `🎖️ رتبتك هي ↤ ${role}\n\n• رسائلك بالتفاعل ↤ ${userStats}\n• ترتيبك بالممتفاعلين ↤ ${finalRank}\n-`;
+            return ctx.reply(replyMsg, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أمر المتفاعلين (توب المتفاعلين)
+        if (text === 'المتفاعلين' || text === 'المتفاعلير' || text === 'توب') {
+            if (!db.stats[chatId] || Object.keys(db.stats[chatId]).length === 0) {
+                return ctx.reply('لا توجد إحصائيات تفاعل مسجلة بعد في هذه المجموعة.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const sortedUsers = Object.entries(db.stats[chatId])
+                .sort((a, b) => b[1].count - a[1].count)
+                .slice(0, 20); // جلب أчих 20 متفاعل
+
+            let listText = 'توب اكثر 20 متفاعلين بالقروب :\n\n';
+            
+            sortedUsers.forEach(([uId, data], index) => {
+                let medal = `${index + 1} )`;
+                if (index === 0) medal = '🥇 )';
+                else if (index === 1) medal = '🥈 )';
+                else if (index === 2) medal = '🥉 )';
+
+                listText += `${medal} ${data.count} | ${data.name}\n`;
+            });
+
+            return ctx.reply(listText, { reply_to_message_id: ctx.message.message_id });
         }
 
     } catch (e) {
