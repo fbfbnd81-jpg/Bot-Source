@@ -1,7 +1,6 @@
 const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
-const https = require('https');
 
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -156,7 +155,7 @@ bot.on('message', async (ctx) => {
                     senderName: name,
                     targetId: whInfo.targetId,
                     targetName: whInfo.targetName,
-                    chatId: whInfo.chatId, // حفظ معرف القروب بشكل أساسي هنا
+                    chatId: whInfo.chatId,
                     content: contentData,
                     seen: false
                 };
@@ -236,6 +235,16 @@ bot.on('message', async (ctx) => {
             return;
         }
 
+        // احصائيات التفاعل في المجموعة
+        if (ctx.chat.type === 'supergroup' || ctx.chat.type === 'group') {
+            if (!db.stats[chatId]) db.stats[chatId] = {};
+            if (!db.stats[chatId][userId]) db.stats[chatId][userId] = { count: 0, name: name };
+            db.stats[chatId][userId].count += 1;
+            db.stats[chatId][userId].name = name;
+            saveData();
+        }
+
+        // أوامر الهمسات
         if (text === 'اهمس' || text === 'همسه' || text === 'ه') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على رسالة الشخص المراد اهماسه.', { reply_to_message_id: ctx.message.message_id });
@@ -267,6 +276,17 @@ bot.on('message', async (ctx) => {
                     ]
                 }
             });
+        }
+
+        // أمر رتبتي
+        if (text === 'رتبتي' || text === 'رتبه') {
+            return ctx.reply(`• رتبتك الحالية هي: ${role}`, { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // أمر تفاعلي
+        if (text === 'تفاعلي' || text === 'تفاعل') {
+            const userStats = (db.stats[chatId] && db.stats[chatId][userId]) ? db.stats[chatId][userId].count : 0;
+            return ctx.reply(`• رسائلك المتفاعلة في هذه المجموعة هي: ${userStats} رسالة 💬`, { reply_to_message_id: ctx.message.message_id });
         }
 
     } catch (e) {
@@ -322,4 +342,3 @@ bot.on('callback_query', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
