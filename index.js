@@ -1,5 +1,5 @@
 const { Telegraf } = require('telegraf');
-const http = http = require('http');
+const http = require('http');
 const fs = require('fs');
 
 http.createServer((req, res) => {
@@ -241,7 +241,6 @@ bot.on('message', async (ctx) => {
             return;
         }
 
-        // احصائيات التفاعل في المجموعة
         if (ctx.chat.type === 'supergroup' || ctx.chat.type === 'group') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             if (!db.stats[chatId][userId]) db.stats[chatId][userId] = { count: 0, name: name };
@@ -259,12 +258,10 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // نداء البوت
         if (text === 'تورايف') {
             return ctx.reply('عيون وقلب تورايف 🤍', { reply_to_message_id: ctx.message.message_id });
         }
 
-        // --- أمر الأوامر / القائمة الرئيسية ---
         if (text === 'الاوامر' || text === 'الأوامر' || text === 'اوامر' || text === 'أوامر' || text === 'مساعدة' || text === 'الخدمات') {
             return ctx.reply('• إليك قائمة أوامر بوت تورايف الشاملة، اختر القسم المطلوب:', {
                 reply_to_message_id: ctx.message.message_id,
@@ -301,7 +298,6 @@ bot.on('message', async (ctx) => {
         const targetTitle = getUserTitle(chatId, targetId);
         const targetUserLevel = getHierarchyLevel(targetRole);
 
-        // أوامر الكتم / عام / الغاء التقييد
         if (text === 'كتم' || text === 'عام' || text === 'الغاء التقييد' || text === 'الغاء الكتم') {
             if (userLevel < 2 && !isTheDev1) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
@@ -341,7 +337,6 @@ bot.on('message', async (ctx) => {
             }
         }
 
-        // أوامر مسح المكتومين
         if (text === 'مم') {
             if (userLevel < 2 && !isTheDev1) {
                 return ctx.reply('هذا الأمر للمشرفين والممالك فقط.', { reply_to_message_id: ctx.message.message_id });
@@ -370,7 +365,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(`• تم مسح ( ${count} ) من المكتومين عام`, { reply_to_message_id: ctx.message.message_id });
         }
 
-        // أوامر الهمسات
         if (text === 'اهمس' || text === 'همسه' || text === 'ه') {
             if (!ctx.message.reply_to_message) {
                 return ctx.reply('يرجى الرد على رسالة الشخص المراد اهماسه.', { reply_to_message_id: ctx.message.message_id });
@@ -404,7 +398,6 @@ bot.on('message', async (ctx) => {
             });
         }
 
-        // أمر تفاعلي
         if (text === 'تفاعلي' || text === 'تفاعل') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             
@@ -426,17 +419,14 @@ bot.on('message', async (ctx) => {
             return ctx.reply(replyMsg, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر رتبته
         if (text === 'رتبته' || text === 'رتبتي') {
             return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🎖️ رتبته ↤ ${targetRole}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر لقبه
         if (text === 'لقبه' || text === 'لقبي') {
             return ctx.reply(`• المستخدم ذا ↤ [ ${targetName} ](tg://user?id=${targetId})\n\n🏷️ لقبه ↤ ${targetTitle}`, { parse_mode: 'Markdown', reply_to_message_id: ctx.message.message_id });
         }
 
-        // أمر المتفاعلين
         if (text === 'المتفاعلين' || text === 'المتفاعلير' || text === 'توب') {
             if (!db.stats[chatId] || Object.keys(db.stats[chatId]).length === 0) {
                 return ctx.reply('لا توجد إحصائيات تفاعل مسجلة بعد في هذه المجموعة.', { reply_to_message_id: ctx.message.message_id });
@@ -493,7 +483,6 @@ bot.on('callback_query', async (ctx) => {
             return ctx.answerCbQuery(alertText, { show_alert: true });
         }
 
-        // تفاعل أزرار الأوامر الشفافة
         if (data.startsWith('help_')) {
             let sectionText = '';
             let backButton = [[{ text: '🔙 العودة للقائمة الرئيسية', callback_data: 'help_main' }]];
@@ -509,7 +498,6 @@ bot.on('callback_query', async (ctx) => {
             } else if (data === 'help_bot') {
                 sectionText = '🤖 **قسم البوت:**\n\n- بداية ، مساعدة ، معلومات ، إعدادات ، سرعة_البوت';
             } else if (data === 'help_dev') {
-                // حماية قسم المطور - لا يستطيع فتحه أو سوقه إلا ديف ون فقط!
                 if (!isTheDev1) {
                     return ctx.answerCbQuery('⚠️ هذا القسم مخصص للمطور الأساسي فقط!', { show_alert: true });
                 }
