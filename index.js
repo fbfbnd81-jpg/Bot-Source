@@ -1,6 +1,7 @@
 const { Telegraf } = require('telegraf');
 const http = require('http');
 const fs = require('fs');
+const https = require('https');
 
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -10,7 +11,7 @@ http.createServer((req, res) => {
 const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
 
 const DATA_FILE = './toraif_github_database.json';
-let db = { roles: {}, stats: {}, titles: {}, muted: {}, globalMuted: {}, adminMenus: {} };
+let db = { roles: {}, stats: {}, titles: {}, muted: {}, globalMuted: {}, adminMenus: {}, whispers: {} };
 
 if (fs.existsSync(DATA_FILE)) {
     try {
@@ -21,6 +22,7 @@ if (fs.existsSync(DATA_FILE)) {
         if (fileData.muted) db.muted = fileData.muted;
         if (fileData.globalMuted) db.globalMuted = fileData.globalMuted;
         if (fileData.adminMenus) db.adminMenus = fileData.adminMenus;
+        if (fileData.whispers) db.whispers = fileData.whispers;
     } catch (e) {}
 }
 
@@ -55,6 +57,19 @@ function getUserRole(chatId, userId, username) {
 
 bot.start(async (ctx) => {
     try {
+        if (ctx.chat.type === 'private') {
+            const args = ctx.message.text.split(' ');
+            if (args.length > 1 && args[1].startsWith('whsp_')) {
+                const wId = args[1].replace('whsp_', '');
+                if (db.whispers && db.whispers[wId]) {
+                    const wData = db.whispers[wId];
+                    return ctx.reply(`💌 همسة خاصة لك من [${wData.senderName}]:\n\n${wData.text}`, { parse_mode: 'Markdown' });
+                } else {
+                    return ctx.reply('انتهت صلاحية هذه الهمسة أو غير موجودة.');
+                }
+            }
+        }
+
         const botInfo = await ctx.telegram.getMe();
         const botUsername = botInfo.username;
         const startText = `اهلا بك يا قلبي 🫶 - ُ\n\n• انا اشغل لك اللي تبي بالمكالمه\n\nادعم هالمنصات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.`;
@@ -102,6 +117,96 @@ bot.on('message', async (ctx) => {
         const isBotActionAttempt = ['كتم', 'كتم عام', 'تقييد', 'حظر', 'اهمس', 'طرد'].includes(text);
         if (isBotActionAttempt && isTargetingBot) {
             return ctx.reply('ياغبيي ذا البوت', { reply_to_message_id: ctx.message.message_id });
+        }
+
+        // 🤫 ميزة الهمسة
+        if (text.startsWith('همسه') || text.startsWith('اهمس')) {
+            const parts = text.split(' ');
+            parts.shift(); // إزالة كلمة الأمر
+            const whisperText = parts.join(' ');
+
+            if (!ctx.message.reply_to_message) {
+                return ctx.reply('يرجى الرد على الشخص لإرسال الهمسة.', { reply_to_message_id: ctx.message.message_id });
+            }
+            if (!whisperText) {
+                return ctx.reply('يرجى كتابة النص المراد همسه مع الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const targetUser = ctx.message.reply_to_message.from;
+            const targetId = targetUser.id;
+            const wId = Date.now().toString() + Math.floor(Math.random() * 1000);
+
+            if (!db.whispers) db.whispers = {};
+            db.whispers[wId] = {
+                senderName: name,
+                text: whisperText
+            };
+            saveData();
+
+            const botInfo = await ctx.telegram.getMe();
+            return ctx.reply(`🤫 تم إرسال همسة خاصة إلى [${targetUser.first_name}](tg://user?id=${targetId})`, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: ctx.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: 'اضغط هنا لقراءة الهمسة 💌', url: `https://t.me/${botInfo.username}?start=whsp_${wId}` }]
+                    ]
+                }
+            });
+        }
+
+        // 🎵 ميزة بحث الأغاني من يوتيوب
+        if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
+            const query = text.replace(/^(يوت|بحث)\s+/, '').trim();
+            if (!query) {
+                return ctx.reply('يرجى كتابة اسم الأغنية بعد الأمر.', { reply_to_message_id: ctx.message.message_id });
+            }
+
+            const searchingMsg = await ctx.reply('🔍 جاري البحث عن الأغنية...', { reply_to_message_id: ctx.message.message_id });
+
+            try {
+                // استخدام Invidious API للبحث وجلب معلومات الصوت مباشرة دون الحاجة لحزم معقدة
+                const searchUrl = `https://vid.puffyan.us/api/v1/search?q=${encodeURIComponent(query)}&type=video`;
+                
+                https.get(searchUrl, (resAPI) => {
+                    let data = '';
+                    resAPI.on('data', chunk => data += chunk);
+                    resAPI.on('end', async () => {
+                        try {
+                            const results = JSON.parse(data);
+                            if (!results || results.length === 0) {
+                                await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, '❌ لم يتم العثور على نتائج.');
+                                return;
+                            }
+
+                            const video = results[0];
+                            const videoTitle = video.title;
+                            const durationSec = video.lengthSeconds;
+                            const minutes = Math.floor(durationSec / 60);
+                            const seconds = durationSec % 60;
+                            const durationFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+                            const audioUrl = `https://invidious.projectsegfault.net/latest_version?id=${video.videoId}&itag=140`;
+                            const uNameTag = username ? `@${username}` : name;
+
+                            await ctx.telegram.deleteMessage(chatId, searchingMsg.message_id).catch(() => {});
+
+                            await ctx.replyWithAudio(audioUrl, {
+                                title: videoTitle,
+                                performer: uNameTag,
+                                caption: `🎵 ${videoTitle}\n⏱ مدة الأغنية: ${durationFormatted}\n👤 طلب بواسطة: ${uNameTag}`,
+                                reply_to_message_id: ctx.message.message_id
+                            });
+                        } catch (err) {
+                            await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, '❌ حدث خطأ أثناء جلب الأغنية.');
+                        }
+                    });
+                }).on('error', async () => {
+                    await ctx.telegram.editMessageText(chatId, searchingMsg.message_id, null, '❌ تعذر الاتصال بخدمة البحث.');
+                });
+            } catch (e) {
+                await ctx.reply('❌ حدث خطأ غير متوقع.', { reply_to_message_id: ctx.message.message_id });
+            }
+            return;
         }
 
         if (text === 'احبك' || text === 'أحبك') {
@@ -421,4 +526,3 @@ bot.on('callback_query', async (ctx) => {
 bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
