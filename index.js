@@ -19,7 +19,8 @@ let db = {
     globalMuted: {}, 
     adminMenus: {}, 
     whispers: {}, 
-    pendingWhispers: {} 
+    pendingWhispers: {},
+    pendingReplies: {} 
 };
 
 if (fs.existsSync(DATA_FILE)) {
@@ -33,6 +34,7 @@ if (fs.existsSync(DATA_FILE)) {
         if (fileData.adminMenus) db.adminMenus = fileData.adminMenus;
         if (fileData.whispers) db.whispers = fileData.whispers;
         if (fileData.pendingWhispers) db.pendingWhispers = fileData.pendingWhispers;
+        if (fileData.pendingReplies) db.pendingReplies = fileData.pendingReplies;
     } catch (e) {}
 }
 
@@ -81,6 +83,25 @@ bot.start(async (ctx) => {
                         return ctx.reply('انتهت صلاحية عملية الهمسة، يرجى البدء من جديد من المجموعة.');
                     }
                     return ctx.reply('• أرسل الآن الهمسة\n\n• يمكنك إرسال نص أو ملصق أو صورة أو قيف');
+                }
+
+                if (args[1].startsWith('start_reply_')) {
+                    const wId = args[1].replace('start_reply_', '');
+                    if (!db.whispers || !db.whispers[wId]) {
+                        return ctx.reply('انتهت صلاحية هذه الهمسة.');
+                    }
+                    const wh = db.whispers[wId];
+                    if (ctx.from.id.toString() !== wh.targetId.toString()) {
+                        return ctx.reply('هذا الرد لا يخصك.');
+                    }
+
+                    if (!db.pendingReplies) db.pendingReplies = {};
+                    db.pendingReplies[ctx.from.id] = {
+                        senderId: wh.senderId
+                    };
+                    saveData();
+
+                    return ctx.reply('• أرسل الآن ردك على الهمسة في هذه المحادثة الخاصة:');
                 }
             }
         }
@@ -143,14 +164,15 @@ bot.on('message', async (ctx) => {
                 delete db.pendingWhispers[userId];
                 saveData();
                 
+                const botInfo = await ctx.telegram.getMe();
                 try {
                     await ctx.telegram.sendMessage(whInfo.chatId, 
                         `• ياحلو ↤ [${whInfo.targetName}](tg://user?id=${whInfo.targetId})\n\n• وصلتك همسة سرية من ↤ [${name}](tg://user?id=${userId})\n\n• انت وحدك تقدر تشوفها`, {
                         parse_mode: 'Markdown',
                         reply_markup: {
                             inline_keyboard: [
-                                [{ text: 'روية الهمسه', callback_data: `wh_view_${wId}` }],
-                                [{ text: 'رد على الهمسه', callback_data: `wh_reply_${wId}` }]
+                                [{ text: 'رؤية الهمسه', callback_data: `wh_view_${wId}` }],
+                                [{ text: 'رد على الهمسه', url: `https://t.me/${botInfo.username}?start=start_reply_${wId}` }]
                             ]
                         }
                     });
@@ -159,8 +181,8 @@ bot.on('message', async (ctx) => {
                 return ctx.reply('• تم ارسال الهمسة');
             }
 
-            if (db.pendingReply && db.pendingReply[userId]) {
-                const repInfo = db.pendingReply[userId];
+            if (db.pendingReplies && db.pendingReplies[userId]) {
+                const repInfo = db.pendingReplies[userId];
                 const senderId = repInfo.senderId;
 
                 let replyContent = ctx.message.text || 'محتوى مرئي للرد';
@@ -168,7 +190,7 @@ bot.on('message', async (ctx) => {
                     await ctx.telegram.sendMessage(senderId, `📩 وصلك رد جديد على همستك من [${name}](tg://user?id=${userId}):\n\n${replyContent}`, { parse_mode: 'Markdown' });
                 } catch (e) {}
 
-                delete db.pendingReply[userId];
+                delete db.pendingReplies[userId];
                 saveData();
                 return ctx.reply('• تم ارسال الرد بنجاح');
             }
@@ -531,10 +553,8 @@ bot.on('callback_query', async (ctx) => {
         const userId = ctx.from.id;
         const name = ctx.from.first_name || 'المستخدم';
 
-        if (data.startsWith('wh_')) {
-            const parts = data.split('_');
-            const action = parts[1]; // view أو reply
-            const wId = parts[2];
+        if (data.startsWith('wh_view_')) {
+            const wId = data.replace('wh_view_', '');
 
             if (!db.whispers || !db.whispers[wId]) {
                 return ctx.answerCbQuery('انتهت صلاحية هذه الهمسة.', { show_alert: true });
@@ -542,49 +562,32 @@ bot.on('callback_query', async (ctx) => {
 
             const wh = db.whispers[wId];
 
-            if (action === 'view') {
-                if (userId.toString() !== wh.targetId.toString()) {
-                    return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
-                }
-
-                const c = wh.content;
-                try {
-                    if (c.type === 'sticker') {
-                        await ctx.telegram.sendSticker(userId, c.value);
-                    } else if (c.type === 'photo') {
-                        await ctx.telegram.sendPhoto(userId, c.value, { caption: c.caption || '' });
-                    } else if (c.type === 'animation') {
-                        await ctx.telegram.sendAnimation(userId, c.value, { caption: c.caption || '' });
-                    } else {
-                        await ctx.telegram.sendMessage(userId, `💌 محتوى الهمسة:\n\n${c.value}`);
-                    }
-                } catch (e) {}
-
-                if (!wh.seen) {
-                    wh.seen = true;
-                    saveData();
-                    try {
-                        await ctx.telegram.sendMessage(wh.senderId, `• ${name}\n• شاف همستك .\n-`);
-                    } catch (e) {}
-                }
-
-                return ctx.answerCbQuery('تم كشف الهمسة لك في الخاص بنجاح ✓', { show_alert: true });
+            if (userId.toString() !== wh.targetId.toString()) {
+                return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
             }
 
-            if (action === 'reply') {
-                if (userId.toString() !== wh.targetId.toString()) {
-                    return ctx.answerCbQuery('الهمسه لا تخصك', { show_alert: true });
+            const c = wh.content;
+            try {
+                if (c.type === 'sticker') {
+                    await ctx.telegram.sendSticker(userId, c.value);
+                } else if (c.type === 'photo') {
+                    await ctx.telegram.sendPhoto(userId, c.value, { caption: c.caption || '' });
+                } else if (c.type === 'animation') {
+                    await ctx.telegram.sendAnimation(userId, c.value, { caption: c.caption || '' });
+                } else {
+                    await ctx.telegram.sendMessage(userId, `💌 محتوى الهمسة:\n\n${c.value}`);
                 }
+            } catch (e) {}
 
-                if (!db.pendingReply) db.pendingReply = {};
-                db.pendingReply[userId] = {
-                    senderId: wh.senderId
-                };
+            if (!wh.seen) {
+                wh.seen = true;
                 saveData();
-
-                await ctx.telegram.sendMessage(userId, '• أرسل الآن ردك على الهمسة في هذه المحادثة الخاصة:');
-                return ctx.answerCbQuery('تم فتح نافذة الرد في الخاص', { show_alert: true });
+                try {
+                    await ctx.telegram.sendMessage(wh.senderId, `• ${name}\n• شاف همستك .\n-`);
+                } catch (e) {}
             }
+
+            return ctx.answerCbQuery();
         }
 
         if (data.startsWith('prm_')) {
