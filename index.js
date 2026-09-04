@@ -7,7 +7,7 @@ http.createServer((req, res) => {
     res.end('Torayf Bot is active!');
 }).listen(process.env.PORT || 3000);
 
-const bot = new Telegraf('8963407967:AAHnqGEd7ft6JPeEQ_97R_cj284V3kJJhng');
+const bot = new Telegraf('8963407967:AAGFd-z2MsvV0Hj7EkoEEPQOrnFBsXv0qiw');
 
 const DATA_FILE = './toraif_github_database.json';
 let db = { 
@@ -389,7 +389,6 @@ bot.on('message', async (ctx) => {
         const targetRole = getUserRole(chatId, targetId, targetUsername);
         const targetUserLevel = getHierarchyLevel(targetRole);
 
-        // --- تحديث شكل أمر "تفاعلي" أو "رتبتي" ليطابق الصورة بالضبط ---
         if (text === 'تفاعلي' || text === 'رتبتي') {
             if (!db.stats[chatId]) db.stats[chatId] = {};
             const count = db.stats[chatId][targetId] ? db.stats[chatId][targetId].count : 0;
@@ -401,7 +400,6 @@ bot.on('message', async (ctx) => {
             return ctx.reply(exactReply);
         }
 
-        // --- تحديث شكل أمر "المتفاعلين" أو "التوب" ليطابق الصورة بالضبط ---
         if (text === 'المتفاعلين' || text === 'التوب') {
             if (!db.stats[chatId]) return ctx.reply('لا توجد إحصائيات تفاعل.');
             const sorted = Object.entries(db.stats[chatId]).sort((a,b)=>b[1].count - a[1].count).slice(0, 20);
