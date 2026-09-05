@@ -1,55 +1,38 @@
-import logging
-import sqlite3
-import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
-from telegram.ext import (
-    ApplicationBuilder,
-    ContextTypes,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters
-)
+import { Telegraf, Markup } from 'telegraf';
+import Database from 'better-sqlite3';
 
-# ----------------- الإعدادات الأساسية -----------------
-TOKEN = "YOUR_BOT_TOKEN_HERE"
-OWNER_USERNAME = "j4xa7"
+const TOKEN = "8963407967:AAGFd-z2MsvV0Hj7EkoEEPQOrnFBsXv0qiw";
+const bot = new Telegraf(TOKEN);
+const db = new Database('toraive.db');
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+// إعداد قاعدة البيانات
+db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        role TEXT DEFAULT 'member',
+        messages INTEGER DEFAULT 0,
+        balance INTEGER DEFAULT 0,
+        is_muted INTEGER DEFAULT 0,
+        is_globally_muted INTEGER DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    );
+    CREATE TABLE IF NOT EXISTS custom_commands (
+        keyword TEXT PRIMARY KEY,
+        response TEXT
+    );
+`);
 
-# ----------------- قاعدة البيانات -----------------
-def init_db():
-    conn = sqlite3.connect("toraive.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            role TEXT DEFAULT 'member',
-            messages INTEGER DEFAULT 0,
-            balance INTEGER DEFAULT 0,
-            is_muted INTEGER DEFAULT 0,
-            is_globally_muted INTEGER DEFAULT 0
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+// الإعدادات الافتراضية
+const setDef = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+setDef.run("chat_locked", "false");
+setDef.run("games_locked", "false");
+setDef.run("violations_locked", "false");
+setDef.run("replies_locked", "false");
 
-init_db()
-
-def get_db():
-    return sqlite3.connect("toraive.db")
-
-# ----------------- نظام الرتب والصلاحيات -----------------
-ROLES_HIERARCHY = {
+const ROLES_HIERARCHY = {
     "member": 0,
     "مميز": 1,
     "مالك": 2,
@@ -58,196 +41,138 @@ ROLES_HIERARCHY = {
     "Myth 🎖️": 5,
     "Dev²🎖️": 6,
     "Dev🎖️": 7
+};
+
+function getUserRole(userId) {
+    const row = db.prepare("SELECT role FROM users WHERE user_id = ?").get(userId);
+    return row ? row.role : "member";
 }
 
-def get_user_role(user_id):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT role FROM users WHERE user_id = ?", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
-    return res[0] if res else "member"
+function checkRankProtection(executorRole, targetRole) {
+    return ROLES_HIERARCHY[executorRole] > ROLES_HIERARCHY[targetRole];
+}
 
-async def check_rank_protection(update: Update, target_user_id: int) -> bool:
-    executor_id = update.effective_user.id
-    executor_role = get_user_role(executor_id)
-    target_role = get_user_role(target_user_id)
+// تتبع الرسائل والتفاعل والحماية التلقائية
+bot.on('text', async (ctx, next) => {
+    if (!ctx.message || !ctx.from || ctx.from.is_bot) return;
+    const userId = ctx.from.id;
+    const text = ctx.message.text.trim();
+
+    // فحص قفل الشات
+    const chatLocked = db.prepare("SELECT value FROM settings WHERE key = 'chat_locked'").get().value === "true";
+    if (chatLocked) {
+        const role = getUserRole(userId);
+        if (ROLES_HIERARCHY[role] < ROLES_HIERARCHY["مميز"]) {
+            try { await ctx.deleteMessage(); return; } catch (e) {}
+        }
+    }
+
+    // تحديث التفاعل
+    db.prepare("INSERT OR IGNORE INTO users (user_id, messages, balance) VALUES (?, 0, 0)").run(userId);
+    db.prepare("UPDATE users SET messages = messages + 1 WHERE user_id = ?").run(userId);
+
+    // الردود الشخصية
+    if (text === 'تورايف' || text === 'بوت') {
+        const replies = ["هلا", "عيوني", "امر", "وش بغيت", "ها", "عيون ايفي"];
+        return ctx.reply(replies[Math.floor(Math.random() * replies.length)]);
+    }
+    if (text === 'ايلاف' || text === 'إيلاف') {
+        return ctx.reply("j4xa7", { reply_to_message_id: ctx.message.message_id });
+    }
+
+    return next();
+});
+
+// أوامر التفاعل
+bot.command(['رتبتي', 'تفاعلي'], (ctx) => {
+    const userId = ctx.from.id;
+    const user = db.prepare("SELECT messages, role FROM users WHERE user_id = ?").get(userId) || { messages: 0, role: 'عضو' };
+    const rankRow = db.prepare("SELECT COUNT(*) as count FROM users WHERE messages > ?").get(user.messages);
+    const rank = rankRow.count + 1;
+    ctx.reply(`• رتبتك هي ↤ ${user.role}\n• رسائلك بالتفاعل ↤ ${user.messages}\n• ترتيبك بالمتفاعلين ↤ ${rank}`);
+});
+
+bot.command(['المتفاعلين', 'التوب'], (ctx) => {
+    const topUsers = db.prepare("SELECT user_id, messages FROM users ORDER BY messages DESC LIMIT 20").all();
+    const userId = ctx.from.id;
+    const userRow = db.prepare("SELECT messages FROM users WHERE user_id = ?").get(userId) || { messages: 0 };
+    const userRankRow = db.prepare("SELECT COUNT(*) as count FROM users WHERE messages > ?").get(userRow.messages);
     
-    executor_lvl = ROLES_HIERARCHY.get(executor_role, 0)
-    target_lvl = ROLES_HIERARCHY.get(target_role, 0)
+    let msg = "المتفاعلين\n\nتوب اكثر 20 متفاعلين بالقروب :\n━━━━━━━━━\n";
+    const medals = ["🥇", "🥈", "🥉"];
+    topUsers.forEach((u, index) => {
+        const prefix = medals[index] || (index + 1);
+        msg += `${prefix} ) ${u.messages.toLocaleString()}  l مقيم_${u.user_id}\n`;
+    });
+    msg += `━━━━━━━━━\n• you) ${userRow.messages} l منشن العضو\n━━━━━━━━━`;
     
-    if executor_lvl <= target_lvl:
-        await update.message.reply_text(f"• ماتقدر تستخدم الامر على ↤ ｢ {target_role} ｣\n• لازم ينزل رتبته أولًا.")
-        return False
-    return True
+    ctx.reply(msg, Markup.inlineKeyboard([
+        [Markup.button.callback('إخفاء الأمر', 'hide_message')]
+    ]));
+});
 
-# ----------------- أوامر الحماية والإدارة بالرد -----------------
-async def mute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return
-    target_id = update.message.reply_to_message.from_user.id
-    if not await check_rank_protection(update, target_id):
-        return
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET is_muted = 1 WHERE user_id = ?", (target_id,))
-    conn.commit()
-    conn.close()
-    
-    try:
-        await context.bot.restrict_chat_member(
-            chat_id=update.effective_chat.id,
-            user_id=target_id,
-            permissions=ChatPermissions(can_send_messages=False)
-        )
-        await update.message.reply_text("• تم كتم العضو بنجاح.")
-    except Exception as e:
-        await update.message.reply_text(f"خطأ في تنفيذ الأمر عبر تيليجرام: {e}")
+bot.action('hide_message', async (ctx) => {
+    try { await ctx.deleteMessage(); } catch (e) {}
+});
 
-async def global_mute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return
-    target_id = update.message.reply_to_message.from_user.id
-    if not await check_rank_protection(update, target_id):
-        return
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET is_globally_muted = 1 WHERE user_id = ?", (target_id,))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("• تم كتم العضو عام بنجاح.")
+// أوامر الحماية بالرد
+bot.command('كتم', async (ctx) => {
+    if (!ctx.message.reply_to_message) return;
+    const targetId = ctx.message.reply_to_message.from.id;
+    const executorRole = getUserRole(ctx.from.id);
+    const targetRole = getUserRole(targetId);
 
-async def restrict_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return
-    target_id = update.message.reply_to_message.from_user.id
-    if not await check_rank_protection(update, target_id):
-        return
-    
-    try:
-        await context.bot.restrict_chat_member(
-            chat_id=update.effective_chat.id,
-            user_id=target_id,
-            permissions=ChatPermissions(can_send_messages=False, can_send_media_messages=False)
-        )
-        await update.message.reply_text("• تم تقييد العضو المحدد.")
-    except Exception as e:
-        await update.message.reply_text(f"خطأ: {e}")
+    if (!checkRankProtection(executorRole, targetRole)) {
+        return ctx.reply(`• ماتقدر تستخدم الامر على ↤ ｢ ${targetRole} ｣\n• لازم ينزل رتبته أولًا.`);
+    }
 
-async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return
-    target_id = update.message.reply_to_message.from_user.id
-    if not await check_rank_protection(update, target_id):
-        return
-    
-    try:
-        await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=target_id)
-        await update.message.reply_text("• تم حظر العضو المحدد.")
-    except Exception as e:
-        await update.message.reply_text(f"خطأ: {e}")
+    try {
+        await ctx.restrictChatMember(targetId, { permissions: { can_send_messages: false } });
+        db.prepare("UPDATE users SET is_muted = 1 WHERE user_id = ?").run(targetId);
+        ctx.reply("• تم كتم العضو بنجاح.");
+    } catch (e) {
+        ctx.reply("حدث خطأ أثناء تنفيذ الأمر.");
+    }
+});
 
-async def kick_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return
-    target_id = update.message.reply_to_message.from_user.id
-    if not await check_rank_protection(update, target_id):
-        return
-    
-    try:
-        await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=target_id)
-        await context.bot.unban_chat_member(chat_id=update.effective_chat.id, user_id=target_id)
-        await update.message.reply_text("• تم طرد العضو المحدد.")
-    except Exception as e:
-        await update.message.reply_text(f"خطأ: {e}")
+bot.command('طرد', async (ctx) => {
+    if (!ctx.message.reply_to_message) return;
+    const targetId = ctx.message.reply_to_message.from.id;
+    const executorRole = getUserRole(ctx.from.id);
+    const targetRole = getUserRole(targetId);
 
-# ----------------- قوائم ومسح المكتومين -----------------
-async def list_muted(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM users WHERE is_muted = 1")
-    muted = cursor.fetchall()
-    conn.close()
-    
-    if not muted:
-        await update.message.reply_text("• لا يوجد مكتومين")
-    else:
-        msg = "قائمة المكتومين:\n" + "\n".join([f"- مقيم_{uid[0]}" for uid in muted])
-        await update.message.reply_text(msg)
+    if (!checkRankProtection(executorRole, targetRole)) {
+        return ctx.reply(`• ماتقدر تستخدم الامر على ↤ ｢ ${targetRole} ｣\n• لازم ينزل رتبته أولًا.`);
+    }
 
-async def clear_muted(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users WHERE is_muted = 1")
-    count = cursor.fetchone()[0]
-    
-    if count == 0:
-        await update.message.reply_text("• لا يوجد مكتومين")
-    else:
-        cursor.execute("UPDATE users SET is_muted = 0")
-        conn.commit()
-        await update.message.reply_text(f"• تم مسح ( {count} ) من المكتومين")
-    conn.close()
+    try {
+        await ctx.banChatMember(targetId);
+        await ctx.unbanChatMember(targetId);
+        ctx.reply("• تم طرد العضو المحدد.");
+    } catch (e) {
+        ctx.reply("حدث خطأ أثناء تنفيذ الأمر.");
+    }
+});
 
-async def list_global_muted(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM users WHERE is_globally_muted = 1")
-    muted = cursor.fetchall()
-    conn.close()
-    
-    if not muted:
-        await update.message.reply_text("• لا يوجد مكتومين عام ,")
-    else:
-        msg = "قائمة المكتومين عام:\n" + "\n".join([f"- مقيم_{uid[0]}" for uid in muted])
-        await update.message.reply_text(msg)
+bot.command('حظر', async (ctx) => {
+    if (!ctx.message.reply_to_message) return;
+    const targetId = ctx.message.reply_to_message.from.id;
+    const executorRole = getUserRole(ctx.from.id);
+    const targetRole = getUserRole(targetId);
 
-async def clear_global_muted(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users WHERE is_globally_muted = 1")
-    count = cursor.fetchone()[0]
-    
-    if count == 0:
-        await update.message.reply_text("• لا يوجد مكتومين عام ,")
-    else:
-        cursor.execute("UPDATE users SET is_globally_muted = 0")
-        conn.commit()
-        await update.message.reply_text(f"• تم مسح ( {count} ) من المكتومين عام")
-    conn.close()
+    if (!checkRankProtection(executorRole, targetRole)) {
+        return ctx.reply(`• ماتقدر تستخدم الامر على ↤ ｢ ${targetRole} ｣\n• لازم ينزل رتبته أولًا.`);
+    }
 
-async def demote_all_roles(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return
-    target_id = update.message.reply_to_message.from_user.id
-    if not await check_rank_protection(update, target_id):
-        return
-    
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET role = 'member' WHERE user_id = ?", (target_id,))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text("• تم تنزيل جميع رتب العضو وإعادته إلى رتبة عضو.")
+    try {
+        await ctx.banChatMember(targetId);
+        ctx.reply("• تم حظر العضو المحدد.");
+    } catch (e) {
+        ctx.reply("حدث خطأ أثناء تنفيذ الأمر.");
+    }
+});
 
-# ----------------- التشغيل -----------------
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+// تشغيل البوت
+bot.launch();
+console.log('Toraive Bot is running successfully...');
 
-    app.add_handler(CommandHandler("كتم", mute_user))
-    app.add_handler(CommandHandler("عام", global_mute_user))
-    app.add_handler(CommandHandler("تقييد", restrict_user))
-    app.add_handler(CommandHandler("حظر", ban_user))
-    app.add_handler(CommandHandler("طرد", kick_user))
-    app.add_handler(CommandHandler("مم", list_muted))
-    app.add_handler(CommandHandler("مسح_المكتومين", clear_muted)) # أو عبر فلتر النص
-    app.add_handler(CommandHandler("خخ", list_global_muted))
-    app.add_handler(CommandHandler("تنزيل_الكل", demote_all_roles))
-
-    logger.info("Moderation bot running...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
