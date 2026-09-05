@@ -323,30 +323,38 @@ const protectionPanelText = `━━━━━━━━━━━━━━━
 • إلغاء الاستثناء + العضو ↤ إزالة الاستثناء
 • سجل الحماية ↤ عرض آخر إجراءات الحماية`;
 
+async function showCommandsMenu(ctx, isEdit = false) {
+    const text = '• أهلًا بك يا مطورنا في لوحة الأوامر الشفافة 🛠️';
+    const markup = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '• أوامر التفاعل والأعضاء', callback_data: 'cmd_members' },
+                    { text: '• أوامر الحماية والتسلية', callback_data: 'cmd_protection' }
+                ],
+                [
+                    { text: '• أوامر الرفع والربط', callback_data: 'cmd_channels' },
+                    { text: '• أوامر الميديا والبحث والألعاب', callback_data: 'cmd_games' }
+                ],
+                [
+                    { text: '• أوامر لوحة المطور', callback_data: 'cmd_dev' },
+                    { text: '• أوامر الإدارة', callback_data: 'cmd_admin' }
+                ],
+                [
+                    { text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }
+                ]
+            ]
+        }
+    };
+    if (isEdit) {
+        return ctx.editMessageText(text, markup);
+    }
+    return ctx.reply(text, markup);
+}
+
 bot.start(async (ctx) => {
     if (ctx.chat.type === 'private') {
-        const botInfo = await ctx.telegram.getMe();
-        return ctx.reply('• أهلًا بك يا مطورنا في لوحة الأوامر الشفافة 🛠️', {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '• أوامر التفاعل والأعضاء', callback_data: 'cmd_members' },
-                        { text: '• أوامر الحماية والتسلية', callback_data: 'cmd_protection' }
-                    ],
-                    [
-                        { text: '• أوامر الرفع والربط', callback_data: 'cmd_channels' },
-                        { text: '• أوامر الميديا والبحث والألعاب', callback_data: 'cmd_games' }
-                    ],
-                    [
-                        { text: '• أوامر لوحة المطور', callback_data: 'cmd_dev' },
-                        { text: '• أوامر الإدارة', callback_data: 'cmd_admin' }
-                    ],
-                    [
-                        { text: 'إغلاق اللوحة ❌', callback_data: 'hide_message' }
-                    ]
-                ]
-            }
-        });
+        return showCommandsMenu(ctx, false);
     }
 });
 
@@ -361,7 +369,8 @@ bot.action('cmd_dev', async (ctx) => {
         await ctx.editMessageText(devPanelText, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: 'إخفاء الامر ❌', callback_data: 'hide_message' }]
+                    [{ text: 'رجوع 🔙', callback_data: 'back_to_main' }],
+                    [{ text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }]
                 ]
             }
         });
@@ -373,7 +382,8 @@ bot.action('cmd_channels', async (ctx) => {
         await ctx.editMessageText(channelsPanelText, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: 'إخفاء الامر ❌', callback_data: 'hide_message' }]
+                    [{ text: 'رجوع 🔙', callback_data: 'back_to_main' }],
+                    [{ text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }]
                 ]
             }
         });
@@ -385,7 +395,8 @@ bot.action('cmd_games', async (ctx) => {
         await ctx.editMessageText(gamesPanelText, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: 'إخفاء الامر ❌', callback_data: 'hide_message' }]
+                    [{ text: 'رجوع 🔙', callback_data: 'back_to_main' }],
+                    [{ text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }]
                 ]
             }
         });
@@ -397,7 +408,8 @@ bot.action('cmd_members', async (ctx) => {
         await ctx.editMessageText(membersPanelText, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: 'إخفاء الامر ❌', callback_data: 'hide_message' }]
+                    [{ text: 'رجوع 🔙', callback_data: 'back_to_main' }],
+                    [{ text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }]
                 ]
             }
         });
@@ -409,7 +421,8 @@ bot.action('cmd_admin', async (ctx) => {
         await ctx.editMessageText(adminPanelText, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: 'إخفاء الامر ❌', callback_data: 'hide_message' }]
+                    [{ text: 'رجوع 🔙', callback_data: 'back_to_main' }],
+                    [{ text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }]
                 ]
             }
         });
@@ -421,10 +434,17 @@ bot.action('cmd_protection', async (ctx) => {
         await ctx.editMessageText(protectionPanelText, {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: 'إخفاء الامر ❌', callback_data: 'hide_message' }]
+                    [{ text: 'رجوع 🔙', callback_data: 'back_to_main' }],
+                    [{ text: 'إخفاء الأمر ❌', callback_data: 'hide_message' }]
                 ]
             }
         });
+    } catch (e) {}
+});
+
+bot.action('back_to_main', async (ctx) => {
+    try {
+        await showCommandsMenu(ctx, true);
     } catch (e) {}
 });
 
@@ -437,31 +457,14 @@ bot.action('hide_message', async (ctx) => {
 bot.on('message', async (ctx) => {
     try {
         if (!ctx.chat) return;
-        const chatId = ctx.chat.id.toString();
         const text = (ctx.message.text || ctx.message.caption || '').trim();
 
-        if (text === 'الأوامر' || text === 'اوامر') {
-            return ctx.reply('• أهلًا بك يا مطورنا في لوحة الأوامر الشفافة 🛠️', {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '• أوامر التفاعل والأعضاء', callback_data: 'cmd_members' },
-                            { text: '• أوامر الحماية والتسلية', callback_data: 'cmd_protection' }
-                        ],
-                        [
-                            { text: '• أوامر الرفع والربط', callback_data: 'cmd_channels' },
-                            { text: '• أوامر الميديا والبحث والألعاب', callback_data: 'cmd_games' }
-                        ],
-                        [
-                            { text: '• أوامر لوحة المطور', callback_data: 'cmd_dev' },
-                            { text: '• أوامر الإدارة', callback_data: 'cmd_admin' }
-                        ],
-                        [
-                            { text: 'إغلاق اللوحة ❌', callback_data: 'hide_message' }
-                        ]
-                    ]
-                }
-            });
+        const triggerWords = [
+            'الأوامر', 'اوامر', 'تورايف', 'تورايف', '|||', 'قائمة الاوامر', 'قائمة الأوامر'
+        ];
+
+        if (triggerWords.includes(text)) {
+            return showCommandsMenu(ctx, false);
         }
     } catch (e) {}
 });
