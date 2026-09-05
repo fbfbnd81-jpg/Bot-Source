@@ -5,7 +5,7 @@ const TOKEN = "8963407967:AAGFd-z2MsvV0Hj7EkoEEPQOrnFBsXv0qiw";
 const bot = new Telegraf(TOKEN);
 const db = new Database('toraive.db');
 
-// إعداد قاعدة البيانات
+// تهيئة قاعدة البيانات
 db.exec(`
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -19,18 +19,12 @@ db.exec(`
         key TEXT PRIMARY KEY,
         value TEXT
     );
-    CREATE TABLE IF NOT EXISTS custom_commands (
-        keyword TEXT PRIMARY KEY,
-        response TEXT
-    );
 `);
 
-// الإعدادات الافتراضية
 const setDef = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
 setDef.run("chat_locked", "false");
 setDef.run("games_locked", "false");
 setDef.run("violations_locked", "false");
-setDef.run("replies_locked", "false");
 
 const ROLES_HIERARCHY = {
     "member": 0,
@@ -52,26 +46,17 @@ function checkRankProtection(executorRole, targetRole) {
     return ROLES_HIERARCHY[executorRole] > ROLES_HIERARCHY[targetRole];
 }
 
-// تتبع الرسائل والتفاعل والحماية التلقائية
+// نظام استقبال الرسائل والتفاعل والحماية التلقائية
 bot.on('text', async (ctx, next) => {
     if (!ctx.message || !ctx.from || ctx.from.is_bot) return;
     const userId = ctx.from.id;
     const text = ctx.message.text.trim();
 
-    // فحص قفل الشات
-    const chatLocked = db.prepare("SELECT value FROM settings WHERE key = 'chat_locked'").get().value === "true";
-    if (chatLocked) {
-        const role = getUserRole(userId);
-        if (ROLES_HIERARCHY[role] < ROLES_HIERARCHY["مميز"]) {
-            try { await ctx.deleteMessage(); return; } catch (e) {}
-        }
-    }
-
-    // تحديث التفاعل
+    // تسجيل وتحديث رسائل التفاعل للأعضاء
     db.prepare("INSERT OR IGNORE INTO users (user_id, messages, balance) VALUES (?, 0, 0)").run(userId);
     db.prepare("UPDATE users SET messages = messages + 1 WHERE user_id = ?").run(userId);
 
-    // الردود الشخصية
+    // شخصية تورايف والردود
     if (text === 'تورايف' || text === 'بوت') {
         const replies = ["هلا", "عيوني", "امر", "وش بغيت", "ها", "عيون ايفي"];
         return ctx.reply(replies[Math.floor(Math.random() * replies.length)]);
@@ -83,7 +68,7 @@ bot.on('text', async (ctx, next) => {
     return next();
 });
 
-// أوامر التفاعل
+// أوامر التفاعل والرتب
 bot.command(['رتبتي', 'تفاعلي'], (ctx) => {
     const userId = ctx.from.id;
     const user = db.prepare("SELECT messages, role FROM users WHERE user_id = ?").get(userId) || { messages: 0, role: 'عضو' };
@@ -115,9 +100,17 @@ bot.action('hide_message', async (ctx) => {
     try { await ctx.deleteMessage(); } catch (e) {}
 });
 
-// أوامر الحماية بالرد
+// أوامر الهمسات
+bot.command(['اهمس', 'همسه', 'ه'], (ctx) => {
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.url('اهمس هنا', `https://t.me/${ctx.botInfo.username}?start=whisper`)]
+    ]);
+    ctx.reply("• تم تحديد الهمسه لـ ↤ هيج/ لا احد يكلمني نايمه\n• اضغط الزر لكتابة الهمسة", keyboard);
+});
+
+// أوامر الحماية بالرد (كتم، طرد، حظر) مع حماية الرتب
 bot.command('كتم', async (ctx) => {
-    if (!ctx.message.reply_to_message) return;
+    if (!ctx.message.reply_to_message) return ctx.reply("• يجب الرد على رسالة العضو المراد كتمه.");
     const targetId = ctx.message.reply_to_message.from.id;
     const executorRole = getUserRole(ctx.from.id);
     const targetRole = getUserRole(targetId);
@@ -131,12 +124,12 @@ bot.command('كتم', async (ctx) => {
         db.prepare("UPDATE users SET is_muted = 1 WHERE user_id = ?").run(targetId);
         ctx.reply("• تم كتم العضو بنجاح.");
     } catch (e) {
-        ctx.reply("حدث خطأ أثناء تنفيذ الأمر.");
+        ctx.reply("تأكد من صلاحيات البوت الإدارية في المجموعة.");
     }
 });
 
 bot.command('طرد', async (ctx) => {
-    if (!ctx.message.reply_to_message) return;
+    if (!ctx.message.reply_to_message) return ctx.reply("• يجب الرد على رسالة العضو المراد طرده.");
     const targetId = ctx.message.reply_to_message.from.id;
     const executorRole = getUserRole(ctx.from.id);
     const targetRole = getUserRole(targetId);
@@ -150,12 +143,12 @@ bot.command('طرد', async (ctx) => {
         await ctx.unbanChatMember(targetId);
         ctx.reply("• تم طرد العضو المحدد.");
     } catch (e) {
-        ctx.reply("حدث خطأ أثناء تنفيذ الأمر.");
+        ctx.reply("تأكد من صلاحيات البوت الإدارية.");
     }
 });
 
 bot.command('حظر', async (ctx) => {
-    if (!ctx.message.reply_to_message) return;
+    if (!ctx.message.reply_to_message) return ctx.reply("• يجب الرد على رسالة العضو المراد حظره.");
     const targetId = ctx.message.reply_to_message.from.id;
     const executorRole = getUserRole(ctx.from.id);
     const targetRole = getUserRole(targetId);
@@ -168,11 +161,9 @@ bot.command('حظر', async (ctx) => {
         await ctx.banChatMember(targetId);
         ctx.reply("• تم حظر العضو المحدد.");
     } catch (e) {
-        ctx.reply("حدث خطأ أثناء تنفيذ الأمر.");
+        ctx.reply("تأكد من صلاحيات البوت الإدارية.");
     }
 });
 
-// تشغيل البوت
 bot.launch();
-console.log('Toraive Bot is running successfully...');
-
+console.log('Toraive Bot is running with all features...');
