@@ -34,8 +34,7 @@ async function showCommandsMenu(ctx, isEdit = false) {
     return ctx.reply(text, markup);
 }
 
-// الاستجابة بالأوامر المباشرة (هذه تعمل في المجموعات 100%)
-bot.command(['start', 'help', 'commands', 'الاوامر', 'اوامر'], async (ctx) => {
+bot.command(['start', 'help', 'commands'], async (ctx) => {
     return showCommandsMenu(ctx, false);
 });
 
@@ -85,12 +84,15 @@ bot.action('hide_message', async (ctx) => {
     } catch (e) {}
 });
 
-// التقاط الرسائل النصية العادية في المجموعة والخاص بشكل مباشر
+// هنا تم إضافة التقاط الكلمات العادية في المجموعة والخاص بدقة
 bot.on('text', async (ctx) => {
-    const text = ctx.message.text.trim();
-    if (['الاوامر', 'اوامر', 'تورايف', 'قائمة الاوامر'].includes(text)) {
-        return showCommandsMenu(ctx, false);
-    }
+    try {
+        const text = ctx.message.text.trim();
+        const keywords = ['الاوامر', 'اوامر', 'الاورامر', 'تورايف', 'قائمة الاوامر', 'قائمة الأوامر'];
+        if (keywords.includes(text)) {
+            return showCommandsMenu(ctx, false);
+        }
+    } catch (e) {}
 });
 
 bot.launch();
