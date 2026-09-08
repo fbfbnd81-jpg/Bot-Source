@@ -58,14 +58,12 @@ bot.start((ctx) => {
 
 function getUserRank(userId) {
     if (!db.users[userId]) {
-        // جعل حسابك أنت أو البداية تلقائياً Dev🎖️
         db.users[userId] = { rank: 'dev', messages: 0, balance: 0 };
         saveDB();
     }
     return db.users[userId].rank || 'dev';
 }
 
-// أمر رتبتي وتفاعلي (بدون منشن تماماً وبنفس التنسيق)
 bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     const userId = ctx.from.id;
     const rankKey = getUserRank(userId);
@@ -87,7 +85,6 @@ bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     });
 });
 
-// إدارة الأوامر والرسائل
 bot.on('text', (ctx, next) => {
     if (ctx.message.text.startsWith('/')) return next();
     
@@ -104,7 +101,6 @@ bot.on('text', (ctx, next) => {
 
     if (!db.mutes[chatId]) db.mutes[chatId] = [];
 
-    // حماية البوت ضد أوامر الإدارة بريبلاي على البوت
     const adminCommands = ['كتم', 'اهمس', 'تقييد', 'حظر', 'طرد', 'عام', 'قفل المخالفات', 'فتح المخالفات', 'قفل الالعاب', 'فتح الالعاب', 'رفع مميز', 'رفع مالك'];
     if (ctx.message.reply_to_message && ctx.message.reply_to_message.from.id === ctx.botInfo.id) {
         if (adminCommands.some(cmd => text.startsWith(cmd))) {
@@ -117,7 +113,6 @@ bot.on('text', (ctx, next) => {
     const userRank = getUserRank(userId);
     const userRankVal = getRankVal(userRank);
 
-    // 1. Dev (Dev🎖️) - صلاحيات كاملة
     if (text === 'قفل المخالفات') {
         if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -178,7 +173,6 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم إضافة 10000 تفاعل للعضو .', { reply_to_message_id: ctx.message.message_id });
     }
 
-    // 2. Dev² (Dev²🎖️) - يرفع إلا ميث اكسترا وما فوق، تقييد ورفع قيود
     if (text === 'تقييد' || text === 'الغاء التقييد') {
         if (userRankVal < getRankVal('dev2')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -187,7 +181,6 @@ bot.on('text', (ctx, next) => {
         return ctx.reply(`• تم تطبيق أمر (${text}) بنجاح.`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // 3. Myth (Myth 🎖️) - كتم عام (عام) وفك عام (خخ)
     if (text === 'عام') {
         if (userRankVal < getRankVal('myth_extra')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
@@ -218,7 +211,6 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم فك الكتم العام عن المستخدم .', { reply_to_message_id: ctx.message.message_id });
     }
 
-    // أوامر التنظيف (كتم، مم) تبدأ من رتبة Myth
     if (text === 'كتم') {
         if (userRankVal < getRankVal('myth')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
@@ -245,7 +237,6 @@ bot.on('text', (ctx, next) => {
         return ctx.reply(`• تم مسح ( ${count} ) من المكتومين .`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // 4. مالك أساسي (main_owner) - يرفع رتبة العضو لـ مميز أو مالك
     if (text === 'رفع مميز' || text === 'رفع مالك') {
         if (userRankVal < getRankVal('main_owner')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ المالك الأساسي ｣', { reply_to_message_id: ctx.message.message_id });
@@ -259,7 +250,6 @@ bot.on('text', (ctx, next) => {
         return ctx.reply(`• تم رفع رتبة العضو إلى (${text.includes('مميز') ? 'مميز' : 'مالك'}) .`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // فحص الكتم العام والمحلي
     if (db.globalMutes[userId] || (db.mutes[chatId] && db.mutes[chatId].includes(userId))) {
         ctx.deleteMessage().catch(() => {});
         return;
@@ -275,4 +265,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running with exact requested restriction messages...');
+console.log('Bot is running successfully!');
