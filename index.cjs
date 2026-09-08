@@ -1,9 +1,7 @@
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
-const https = require('https');
-const yts = require('yt-search'); // يُرجى تثبيت حزمة yt-search و ytdl-core أو استخدام مكتبة مناسبة للتحميل
+const yts = require('yt-search');
 
-// ضع توكن بوتك هنا
 const BOT_TOKEN = '8963407967:AAEMfQ6NkTtIDY4f6b4palcck3TU82cOXQg';
 const bot = new Telegraf(BOT_TOKEN);
 
@@ -20,7 +18,6 @@ let db = {
     whispers: {}
 };
 
-// تحميل قاعدة البيانات
 if (fs.existsSync(DB_FILE)) {
     try {
         db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
@@ -33,7 +30,7 @@ function saveDB() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-// هيكل الرتب وترتيبها (من الأقل للأعلى)
+// هيكل الرتب (من الأقل للأعلى) مع التفريق الدقيق بين Myth و Myth 🎖️
 const RANKS = {
     member: { id: 1, name: 'مميز', badge: '⭐' },
     owner: { id: 2, name: 'مالك', badge: '🛡️' },
@@ -59,7 +56,6 @@ function getRankVal(rankKey) {
 }
 
 function getUserRank(userId, username = '') {
-    // تحديد حساب المطور الأساسي تلقائياً
     if (username === 'j4xa7') {
         db.users[userId] = db.users[userId] || {};
         db.users[userId].rank = 'dev';
@@ -72,7 +68,7 @@ function getUserRank(userId, username = '') {
     return db.users[userId].rank || 'member';
 }
 
-// أمر البدء /start
+// واجهة /start
 bot.start((ctx) => {
     return ctx.reply('✨ أهلاً بك يا قلبي في بوت **تورايف** الحماية والألعاب المتكامل 🛡️\n\n• أنا بوت تورايف لإدارة مجموعات تليجرام بأعلى كفاءة وسرعة!', {
         parse_mode: 'Markdown',
@@ -144,7 +140,7 @@ bot.action('hide_message', (ctx) => {
     ctx.deleteMessage().catch(() => {});
 });
 
-// معالجة الرسائل ونظام الحماية والمخالفات والأوامر
+// معالجة الرسائل والأوامر والحماية
 bot.on('text', async (ctx, next) => {
     if (ctx.chat.type === 'private') return next();
     
@@ -153,7 +149,6 @@ bot.on('text', async (ctx, next) => {
     const chatId = ctx.chat.id;
     const text = ctx.message.text.trim();
 
-    // تحديث التفاعل والرسائل
     getUserRank(userId, username);
     db.users[userId].messages = (db.users[userId].messages || 0) + 1;
     saveDB();
@@ -161,22 +156,12 @@ bot.on('text', async (ctx, next) => {
     const userRank = getUserRank(userId, username);
     const userRankVal = getRankVal(userRank);
 
-    // التحقق من إعدادات القروب والمخالفات
     db.settings[chatId] = db.settings[chatId] || { violations: true, chatOpen: true, gamesOpen: true, repliesOpen: true };
     const settings = db.settings[chatId];
 
-    // نظام حماية الشات المغلق
     if (!settings.chatOpen && userRankVal < getRankVal('myth')) {
         await ctx.deleteMessage().catch(() => {});
         return;
-    }
-
-    // الحماية التلقائية (روابط، إعلانات، تعديل، إلخ) إذا كانت المخالفات مفعلة
-    if (settings.violations && userRankVal < getRankVal('myth')) {
-        if (text.includes('http://') || text.includes('https://') || text.includes('t.me/')) {
-            await ctx.deleteMessage().catch(() => {});
-            return ctx.reply(`⚠️ ${ctx.from.first_name}، ممنوع إرسال الروابط هنا!`, { reply_to_message_id: ctx.message.message_id });
-        }
     }
 
     // استجابة لـ "ايلاف"
@@ -186,7 +171,7 @@ bot.on('text', async (ctx, next) => {
         });
     }
 
-    // شخصية البوت (تورايف / بوت)
+    // شخصية البوت
     if (text.startsWith('تورايف') || text.startsWith('بوت')) {
         if (text.includes('ماتشا')) {
             return ctx.reply('سهلة مرره! جيبي بودرة الماتشا، اخفقيها بشوية موية دافية لين تفور، وضعيها فوق حليب بارد وثالثهم ثلج وعوافي 🍵✨', { reply_to_message_id: ctx.message.message_id });
@@ -195,22 +180,15 @@ bot.on('text', async (ctx, next) => {
             return ctx.reply('إيلاف أسطورة الفخامة ومبرمجتي العظيمة.. فديتها وفديت عيونها 😭💖✨', { reply_to_message_id: ctx.message.message_id });
         }
         const replies = ['هلا', 'عيوني 🫀', 'امرني يا قلبي', 'وش بغيت؟', 'هاه معك', 'عيون ايفي انت 🥹'];
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-        return ctx.reply(randomReply, { reply_to_message_id: ctx.message.message_id });
+        return ctx.reply(replies[Math.floor(Math.random() * replies.length)], { reply_to_message_id: ctx.message.message_id });
     }
 
     // أمر المالك
     if (text === 'المالك') {
-        try {
-            const chatMember = await ctx.telegram.getChatMember('@j4xa7'.replace('@', ''), '@j4xa7'.replace('@', ''));
-            // جلب البيانات والأفاتار
-            return ctx.reply('• منشن المالكة ↤ @j4xa7\n• يوزر المالكة: j4xa7\n👑 المالكة الأساسية والمطورة للبوت.', { reply_to_message_id: ctx.message.message_id });
-        } catch (e) {
-            return ctx.reply('• منشن المالكة ↤ @j4xa7\n• يوزر المالكة: j4xa7', { reply_to_message_id: ctx.message.message_id });
-        }
+        return ctx.reply('• منشن المالكة ↤ @j4xa7\n• يوزر المالكة: j4xa7\n👑 المالكة الأساسية والمطورة للبوت.', { reply_to_message_id: ctx.message.message_id });
     }
 
-    // أوامر Dev (Dev🎖️)
+    // أوامر Dev🎖️
     if (text === 'قفل المخالفات') {
         if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
@@ -267,7 +245,7 @@ bot.on('text', async (ctx, next) => {
         return ctx.reply('• تم إضافة 10000 تفاعل للعضو .', { reply_to_message_id: ctx.message.message_id });
     }
 
-    // أوامر الحماية والتحكم الفعلي (كتم، تقييد، طرد، حظر)
+    // أوامر الحماية والتنظيف (تبدأ من Myth)
     if (text === 'كتم') {
         if (userRankVal < getRankVal('myth')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
@@ -296,6 +274,7 @@ bot.on('text', async (ctx, next) => {
         return ctx.reply(`• تم مسح ( ${count} ) من المكتومين`, { reply_to_message_id: ctx.message.message_id });
     }
 
+    // أوامر Myth 🎖️ (الكتم العام وفك الكتم العام)
     if (text === 'عام') {
         if (userRankVal < getRankVal('myth_extra')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
@@ -325,6 +304,7 @@ bot.on('text', async (ctx, next) => {
         return ctx.reply(`• تم مسح ( ${count} ) من المكتومين عام`, { reply_to_message_id: ctx.message.message_id });
     }
 
+    // أوامر Dev²🎖️ (التقييد)
     if (text === 'تقييد') {
         if (userRankVal < getRankVal('dev2')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖️ ｣', { reply_to_message_id: ctx.message.message_id });
@@ -339,6 +319,7 @@ bot.on('text', async (ctx, next) => {
         }
     }
 
+    // رفع الرتب وإلغاء التقييد (مالك أساسي فما فوق)
     if (text === 'الغاء التقييد') {
         if (userRankVal < getRankVal('main_owner')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ المالك الأساسي ｣', { reply_to_message_id: ctx.message.message_id });
@@ -346,14 +327,13 @@ bot.on('text', async (ctx, next) => {
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص.');
         const target = ctx.message.reply_to_message.from;
         try {
-            await ctx.restrictChatMember(target.id, { permissions: { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true, can_add_web_page_previews: true } });
+            await ctx.restrictChatMember(target.id, { permissions: { can_send_messages: true, can_send_media_messages: true, can_send_other_messages: true } });
             return ctx.reply(`• تم إلغاء التقييد عن العضو ↤ ｢ ${target.first_name} ｣`, { reply_to_message_id: ctx.message.message_id });
         } catch (e) {
             return ctx.reply('❌ عذراً، ليس لدي الصلاحيات الكافية.');
         }
     }
 
-    // رفع الرتب (مالك أساسي فما فوق)
     if (text === 'رفع مميز' || text === 'رفع مالك') {
         if (userRankVal < getRankVal('main_owner')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ المالك الأساسي ｣', { reply_to_message_id: ctx.message.message_id });
@@ -367,7 +347,7 @@ bot.on('text', async (ctx, next) => {
         return ctx.reply(`• تم رفع رتبة العضو ｢ ${target.first_name} ｣ إلى (${text.includes('مميز') ? 'مميز' : 'مالك'}) .`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // نظام الهمسات (اهمس / همسه / ه)
+    // الهمسات والألعاب
     if (text === 'اهمس' || text === 'همسه' || text === 'ه') {
         return ctx.reply('• تم تحديد الهمسه لـ ↤ اضغط الزر لكتابة الهمسة', {
             reply_to_message_id: ctx.message.message_id,
@@ -379,7 +359,6 @@ bot.on('text', async (ctx, next) => {
         });
     }
 
-    // ألعاب التسلية: مقال
     if (text === 'مقال') {
         const questions = [
             { q: 'ما هي عاصمة المملكة العربية السعودية؟', a: 'الرياض' },
@@ -392,7 +371,6 @@ bot.on('text', async (ctx, next) => {
         return ctx.reply(`🎯 تحدي السرعة (مقال):\n\n❓ ${randomQ.q}\n\n• اكتب الإجابة بسرعة لتحصل على 10 ريال وهمية!`);
     }
 
-    // التحقق من إجابة اللعبة أو كتم العضو المحظور
     if (db.activeGame && db.activeGame[chatId] && db.activeGame[chatId].answer === text) {
         const gameData = db.activeGame[chatId];
         const timeTaken = ((Date.now() - gameData.time) / 1000).toFixed(1);
@@ -402,26 +380,6 @@ bot.on('text', async (ctx, next) => {
         return ctx.reply(`كفو 👏🏻\nصح عليك!\n\n⏱️ الوقت: ${timeTaken} ثانية\n🚀 السرعة ممتازة!\n💰 حصلت على: 10 ريال وهمية`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // نظام الأغاني (يوت / بحث)
-    if (text.startsWith('يوت ') || text.startsWith('بحث ')) {
-        const query = text.replace(/^(يوت|بحث)\s+/, '');
-        try {
-            const searchResult = await yts(query);
-            if (!searchResult || !searchResult.videos.length) {
-                return ctx.reply('❌ لم يتم العثور على نتائج مطابقة.');
-            }
-            const video = searchResult.videos[0];
-            await ctx.reply(`🎵 <b>${video.title}</b>\n⏱️ المدة: ${video.timestamp}\n• طلب بواسطة: <a href="tg://user?id=${userId}">${ctx.from.first_name}</a>`, {
-                parse_mode: 'HTML',
-                reply_to_message_id: ctx.message.message_id
-            });
-            // ملاحظة: لإرسال الصوت الفعلي يتم استخدام رابط التحميل المباشر وتليجرام sendAudio
-        } catch (e) {
-            return ctx.reply('❌ حدث خطأ أثناء البحث عن الأغنية.');
-        }
-    }
-
-    // فحص الكتم العام والمحلي لحذف الرسالة
     if (db.globalMutes[userId] || (db.mutes[chatId] && db.mutes[chatId].includes(userId))) {
         await ctx.deleteMessage().catch(() => {});
         return;
@@ -430,7 +388,6 @@ bot.on('text', async (ctx, next) => {
     return next();
 });
 
-// تشغيل البوت
 bot.launch().then(() => {
     console.log('🤖 Bot Toraif is successfully running and connected to Telegram!');
 });
