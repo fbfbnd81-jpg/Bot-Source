@@ -56,17 +56,25 @@ bot.start((ctx) => {
     });
 });
 
-function getUserRank(userId) {
-    if (!db.users[userId]) {
-        db.users[userId] = { rank: 'dev', messages: 0, balance: 0 };
+function getUserRank(userId, username = '') {
+    // تحديد حسابك كمطور تلقائياً إذا كان اليوزر j4xa7 أو أول دخول
+    if (username === 'j4xa7' || userId.toString() === 'رقم_آيدي_حسابك_الثاني_هنا') {
+        db.users[userId] = db.users[userId] || {};
+        db.users[userId].rank = 'dev';
         saveDB();
     }
-    return db.users[userId].rank || 'dev';
+    
+    if (!db.users[userId]) {
+        db.users[userId] = { rank: 'member', messages: 0, balance: 0 };
+        saveDB();
+    }
+    return db.users[userId].rank || 'member';
 }
 
 bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     const userId = ctx.from.id;
-    const rankKey = getUserRank(userId);
+    const username = ctx.from.username || '';
+    const rankKey = getUserRank(userId, username);
     const rankInfo = RANKS[rankKey] || RANKS.member;
     const user = db.users[userId];
 
@@ -76,7 +84,7 @@ bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     let position = sortedUsers.findIndex(([id]) => id == userId) + 1;
     if (position === 0) position = 1;
 
-    const text = `• رتبتك هي ↤  ${rankInfo.name}\n` +
+    const text = `• رتبتك هي ↤  ${rankInfo.name} ${rankInfo.badge}\n` +
         `• رسائلك بالتفاعل ↤ ${user.messages || 0}\n` +
         `• ترتيبك بالمتفاعلين ↤ ${position}`;
 
@@ -89,13 +97,11 @@ bot.on('text', (ctx, next) => {
     if (ctx.message.text.startsWith('/')) return next();
     
     const userId = ctx.from.id;
+    const username = ctx.from.username || '';
     const chatId = ctx.chat.id;
     const text = ctx.message.text.trim();
 
-    if (!db.users[userId]) {
-        db.users[userId] = { rank: 'dev', messages: 0, balance: 0 };
-        saveDB();
-    }
+    getUserRank(userId, username);
     db.users[userId].messages = (db.users[userId].messages || 0) + 1;
     saveDB();
 
@@ -110,7 +116,7 @@ bot.on('text', (ctx, next) => {
         }
     }
 
-    const userRank = getUserRank(userId);
+    const userRank = getUserRank(userId, username);
     const userRankVal = getRankVal(userRank);
 
     if (text === 'قفل المخالفات') {
@@ -217,11 +223,12 @@ bot.on('text', (ctx, next) => {
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على رسالة الشخص المراد كتمه.');
         const targetUser = ctx.message.reply_to_message.from;
+        const targetName = targetUser.first_name || 'المستخدم';
         if (!db.mutes[chatId].includes(targetUser.id)) {
             db.mutes[chatId].push(targetUser.id);
             saveDB();
         }
-        return ctx.reply(`• تم كتم المستخدم .`, { reply_to_message_id: ctx.message.message_id });
+        return ctx.reply(`• المستخدم ذا ↤ ｢ ${targetName} ｣\n• كتمته`, { reply_to_message_id: ctx.message.message_id });
     }
 
     if (text === 'مم') {
@@ -265,4 +272,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running successfully!');
+console.log('Bot is running successfully with exact mute format!');
