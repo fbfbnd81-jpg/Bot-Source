@@ -349,7 +349,7 @@ async function showCommandsMenu(ctx, isEdit = false) {
 
 bot.start(async (ctx) => {
     if (ctx.chat.type === 'private') {
-        const startText = `اهلا بك يا قلبي ⁦❤️⁩ -\n\n. انا اشغل لك اللي تبي بالمكالمه\n\nادعم هالمصنغات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.`;
+        const startText = 'أهلاً بك في البوت! يمكنك إضافته إلى مجموعتك لاستخدام كافة الخدمات.';
         return ctx.reply(startText, {
             reply_markup: {
                 inline_keyboard: [
