@@ -41,6 +41,10 @@ const RANK_HIERARCHY = {
     dev: 7
 };
 
+function getRankVal(rankKey) {
+    return RANK_HIERARCHY[rankKey] || 1;
+}
+
 bot.start((ctx) => {
     return ctx.reply('اهلا بك يا قلبي 🫀 - \n\n• انا اشغل لك اللي تبي بالمكالمه', {
         reply_markup: {
@@ -52,31 +56,21 @@ bot.start((ctx) => {
     });
 });
 
-function mentionUser(user) {
-    const name = user.first_name || 'المستخدم';
-    const escapedName = name.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-    return `[${escapedName}](tg://user?id=${user.id})`;
-}
-
 function getUserRank(userId) {
     if (!db.users[userId]) {
-        db.users[userId] = { rank: 'member', messages: 0, balance: 0 };
+        // جعل حسابك أنت أو البداية تلقائياً Dev🎖️
+        db.users[userId] = { rank: 'dev', messages: 0, balance: 0 };
         saveDB();
     }
-    return db.users[userId].rank || 'member';
+    return db.users[userId].rank || 'dev';
 }
 
-function checkPermission(userRank, requiredRank) {
-    return (RANK_HIERARCHY[userRank] || 1) >= (RANK_HIERARCHY[requiredRank] || 1);
-}
-
-// أمر رتبتي وتفاعلي
+// أمر رتبتي وتفاعلي (بدون منشن تماماً وبنفس التنسيق)
 bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     const userId = ctx.from.id;
     const rankKey = getUserRank(userId);
     const rankInfo = RANKS[rankKey] || RANKS.member;
     const user = db.users[userId];
-    const userMention = mentionUser(ctx.from);
 
     const sortedUsers = Object.entries(db.users)
         .sort((a, b) => (b[1].messages || 0) - (a[1].messages || 0));
@@ -84,13 +78,11 @@ bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     let position = sortedUsers.findIndex(([id]) => id == userId) + 1;
     if (position === 0) position = 1;
 
-    const text = `${userMention}\n\n` +
-        `• رتبتك هي ↤  ${rankInfo.name}\n` +
+    const text = `• رتبتك هي ↤  ${rankInfo.name}\n` +
         `• رسائلك بالتفاعل ↤ ${user.messages || 0}\n` +
         `• ترتيبك بالمتفاعلين ↤ ${position}`;
 
     return ctx.reply(text, {
-        parse_mode: 'Markdown',
         reply_to_message_id: ctx.message.message_id
     });
 });
@@ -104,7 +96,7 @@ bot.on('text', (ctx, next) => {
     const text = ctx.message.text.trim();
 
     if (!db.users[userId]) {
-        db.users[userId] = { rank: 'dev', messages: 0, balance: 0 }; // افتراضي ديف للاختبار البداية أو عضو
+        db.users[userId] = { rank: 'dev', messages: 0, balance: 0 };
         saveDB();
     }
     db.users[userId].messages = (db.users[userId].messages || 0) + 1;
@@ -113,9 +105,9 @@ bot.on('text', (ctx, next) => {
     if (!db.mutes[chatId]) db.mutes[chatId] = [];
 
     // حماية البوت ضد أوامر الإدارة بريبلاي على البوت
-    const adminCommands = ['كتم', 'اهمس', 'تقييد', 'حظر', 'طرد', 'عام', 'قفل المخالفات', 'فتح المخالفات', 'قفل الالعاب', 'فتح الالعاب'];
+    const adminCommands = ['كتم', 'اهمس', 'تقييد', 'حظر', 'طرد', 'عام', 'قفل المخالفات', 'فتح المخالفات', 'قفل الالعاب', 'فتح الالعاب', 'رفع مميز', 'رفع مالك'];
     if (ctx.message.reply_to_message && ctx.message.reply_to_message.from.id === ctx.botInfo.id) {
-        if (adminCommands.includes(text) || text.startsWith('رفع') || text.startsWith('تنزيل')) {
+        if (adminCommands.some(cmd => text.startsWith(cmd))) {
             return ctx.reply('ياغبي هذا البوت', {
                 reply_to_message_id: ctx.message.message_id
             });
@@ -123,11 +115,11 @@ bot.on('text', (ctx, next) => {
     }
 
     const userRank = getUserRank(userId);
-    const userRankVal = RANK_HIERARCHY[userRank] || 1;
+    const userRankVal = getRankVal(userRank);
 
     // 1. Dev (Dev🎖️) - صلاحيات كاملة
     if (text === 'قفل المخالفات') {
-        if (userRankVal < RANK_HIERARCHY['dev']) {
+        if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         db.settings[chatId] = db.settings[chatId] || {};
@@ -136,7 +128,7 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم قفل المخالفات .', { reply_to_message_id: ctx.message.message_id });
     }
     if (text === 'فتح المخالفات') {
-        if (userRankVal < RANK_HIERARCHY['dev']) {
+        if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         db.settings[chatId] = db.settings[chatId] || {};
@@ -145,7 +137,7 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم فتح المخالفات .', { reply_to_message_id: ctx.message.message_id });
     }
     if (text === 'قفل الالعاب') {
-        if (userRankVal < RANK_HIERARCHY['dev']) {
+        if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         db.settings[chatId] = db.settings[chatId] || {};
@@ -154,7 +146,7 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم قفل الألعاب .', { reply_to_message_id: ctx.message.message_id });
     }
     if (text === 'فتح الالعاب') {
-        if (userRankVal < RANK_HIERARCHY['dev']) {
+        if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         db.settings[chatId] = db.settings[chatId] || {};
@@ -163,7 +155,7 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم فتح الألعاب .', { reply_to_message_id: ctx.message.message_id });
     }
     if (text === 'تصفير التفاعل') {
-        if (userRankVal < RANK_HIERARCHY['dev']) {
+        if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص لتصفير تفاعله.');
@@ -175,7 +167,7 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم تصفير تفاعل العضو .', { reply_to_message_id: ctx.message.message_id });
     }
     if (text === 'اضف تفاعل 10000' || text.startsWith('اضف تفاعل')) {
-        if (userRankVal < RANK_HIERARCHY['dev']) {
+        if (userRankVal < getRankVal('dev')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص لزيادة تفاعله.');
@@ -188,24 +180,23 @@ bot.on('text', (ctx, next) => {
 
     // 2. Dev² (Dev²🎖️) - يرفع إلا ميث اكسترا وما فوق، تقييد ورفع قيود
     if (text === 'تقييد' || text === 'الغاء التقييد') {
-        if (userRankVal < RANK_HIERARCHY['dev2']) {
+        if (userRankVal < getRankVal('dev2')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص.');
         return ctx.reply(`• تم تطبيق أمر (${text}) بنجاح.`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // 3. Myth (Myth 🎖️) - كتم عام (عام) وفك عام (خخ)، تنزيل الرتب لمن تحته
+    // 3. Myth (Myth 🎖️) - كتم عام (عام) وفك عام (خخ)
     if (text === 'عام') {
-        if (userRankVal < RANK_HIERARCHY['myth_extra']) {
+        if (userRankVal < getRankVal('myth_extra')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص لكتمه عام.');
         const targetId = ctx.message.reply_to_message.from.id;
         const targetRank = getUserRank(targetId);
         
-        // لا يقدر على Dev² أو ما فوق
-        if (RANK_HIERARCHY[targetRank] >= RANK_HIERARCHY['dev2']) {
+        if (getRankVal(targetRank) >= getRankVal('dev2')) {
             return ctx.reply('• ماتقدر تستخدم الامر على ↤ ｢ Dev²🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
 
@@ -215,11 +206,10 @@ bot.on('text', (ctx, next) => {
     }
 
     if (text === 'خخ') {
-        if (userRankVal < RANK_HIERARCHY['myth_extra']) {
+        if (userRankVal < getRankVal('myth_extra')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth 🎖 ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) {
-            // إذا لم يكن ريبلاي وكان خخ العادية الخاصة بمسح المكتومين العام
             return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
         }
         const targetId = ctx.message.reply_to_message.from.id;
@@ -228,27 +218,22 @@ bot.on('text', (ctx, next) => {
         return ctx.reply('• تم فك الكتم العام عن المستخدم .', { reply_to_message_id: ctx.message.message_id });
     }
 
-    // أوامر التنظيف (كتم، مم، مسح المكتومين) تبدأ من رتبة Myth فما فوق
+    // أوامر التنظيف (كتم، مم) تبدأ من رتبة Myth
     if (text === 'كتم') {
-        if (userRankVal < RANK_HIERARCHY['myth']) {
+        if (userRankVal < getRankVal('myth')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على رسالة الشخص المراد كتمه.');
         const targetUser = ctx.message.reply_to_message.from;
-        const targetMention = mentionUser(targetUser);
-
         if (!db.mutes[chatId].includes(targetUser.id)) {
             db.mutes[chatId].push(targetUser.id);
             saveDB();
         }
-        return ctx.reply(`• المستخدم ← ${targetMention}\n• تم كتمه .`, {
-            parse_mode: 'Markdown',
-            reply_to_message_id: ctx.message.message_id
-        });
+        return ctx.reply(`• تم كتم المستخدم .`, { reply_to_message_id: ctx.message.message_id });
     }
 
     if (text === 'مم') {
-        if (userRankVal < RANK_HIERARCHY['myth']) {
+        if (userRankVal < getRankVal('myth')) {
             return ctx.reply('• هذا الامر يخص ↤ ｢ Myth ｣', { reply_to_message_id: ctx.message.message_id });
         }
         const count = db.mutes[chatId].length;
@@ -260,10 +245,10 @@ bot.on('text', (ctx, next) => {
         return ctx.reply(`• تم مسح ( ${count} ) من المكتومين .`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    // 4. مالك أساسي (main_owner) - يرفع رتبة العضو لـ مميز أو مالك، ويلغي التقييد
+    // 4. مالك أساسي (main_owner) - يرفع رتبة العضو لـ مميز أو مالك
     if (text === 'رفع مميز' || text === 'رفع مالك') {
-        if (userRankVal < RANK_HIERARCHY['main_owner']) {
-            return ctx.reply('• هذا الامر يخص رتبة أعلى.', { reply_to_message_id: ctx.message.message_id });
+        if (userRankVal < getRankVal('main_owner')) {
+            return ctx.reply('• هذا الامر يخص ↤ ｢ المالك الأساسي ｣', { reply_to_message_id: ctx.message.message_id });
         }
         if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص.');
         const targetId = ctx.message.reply_to_message.from.id;
@@ -274,14 +259,7 @@ bot.on('text', (ctx, next) => {
         return ctx.reply(`• تم رفع رتبة العضو إلى (${text.includes('مميز') ? 'مميز' : 'مالك'}) .`, { reply_to_message_id: ctx.message.message_id });
     }
 
-    if (text === 'الغاء التقييد') {
-        if (userRankVal < RANK_HIERARCHY['main_owner']) {
-            return ctx.reply('• هذا الامر يخص مالك أساسي أو أعلى.', { reply_to_message_id: ctx.message.message_id });
-        }
-        return ctx.reply('• تم إلغاء التقييد بنجاح.', { reply_to_message_id: ctx.message.message_id });
-    }
-
-    // فحص الكتم العام والمحلي للمستخدمين العاديين
+    // فحص الكتم العام والمحلي
     if (db.globalMutes[userId] || (db.mutes[chatId] && db.mutes[chatId].includes(userId))) {
         ctx.deleteMessage().catch(() => {});
         return;
@@ -297,4 +275,4 @@ bot.on('text', (ctx, next) => {
 });
 
 bot.launch();
-console.log('Bot is running with full strict hierarchical rank permissions...');
+console.log('Bot is running with exact requested restriction messages...');
