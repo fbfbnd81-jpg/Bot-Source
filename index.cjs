@@ -4,13 +4,14 @@ const fs = require('fs');
 const bot = new Telegraf('8963407967:AAEMfQ6NkTtIDY4f6b4palcck3TU82cOXQg');
 
 const DB_FILE = 'database.json';
-let db = { users: {}, groups: {} };
+let db = { users: {}, groups: {}, mutes: {} };
 
 if (fs.existsSync(DB_FILE)) {
     try {
         db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        if (!db.mutes) db.mutes = {};
     } catch (e) {
-        db = { users: {}, groups: {} };
+        db = { users: {}, groups: {}, mutes: {} };
     }
 }
 
@@ -29,7 +30,7 @@ const RANKS = {
 };
 
 bot.start((ctx) => {
-    return ctx.reply('اهلا بك يا قلبي 🫀 - \n\n• انا اشغل لك اللي تبي بالمكالمه\n\nادعم هالمنصات كلها : يوتيوب، سبوتيفاي، ريسو، ابل ميوزك وساوند كلاود.', {
+    return ctx.reply('اهلا بك يا قلبي 🫀 - \n\n• انا اشغل لك اللي تبي بالمكالمه', {
         reply_markup: {
             inline_keyboard: [
                 [{ text: '➕ أضفني في مجموعتك', url: `https://t.me/${ctx.botInfo.username}?startgroup=true` }],
@@ -39,7 +40,14 @@ bot.start((ctx) => {
     });
 });
 
-// أمر رتبتي وتفاعلي بالشكل المطلوب
+// دالة مساعدة لعمل منشن حقيقي للشخص (Markdown)
+function mentionUser(user) {
+    const name = user.first_name || 'المستخدم';
+    const escapedName = name.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+    return `[${escapedName}](tg://user?id=${user.id})`;
+}
+
+// أمر رتبتي وتفاعلي بالشكل المطلوب تماماً مع منشن الحساب
 bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     const userId = ctx.from.id;
     
@@ -50,7 +58,7 @@ bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     
     const user = db.users[userId];
     const rankInfo = RANKS[user.rank] || RANKS.member;
-    const name = ctx.from.first_name || 'المستخدم';
+    const userMention = mentionUser(ctx.from);
 
     const sortedUsers = Object.entries(db.users)
         .sort((a, b) => (b[1].messages || 0) - (a[1].messages || 0));
@@ -58,41 +66,18 @@ bot.hears(['رتبتي', 'تفاعلي'], (ctx) => {
     let position = sortedUsers.findIndex(([id]) => id == userId) + 1;
     if (position === 0) position = 1;
 
-    const text = `${name}\nرتبتي\n\n` +
-        `🏅 رتبتك هي ↤ ${rankInfo.name}\n` +
+    const text = `${userMention}\nرتبتي\n\n` +
+        `• رتبتك هي ↤ 「 ${rankInfo.badge} ${rankInfo.name} 」\n` +
         `• رسائلك بالتفاعل ↤ ${user.messages}\n` +
         `• ترتيبك بالمتفاعلين ↤ ${position}`;
 
     return ctx.reply(text, {
+        parse_mode: 'Markdown',
         reply_to_message_id: ctx.message.message_id
     });
 });
 
-// أمر المتفاعلين
-bot.hears('المتفاعلين', (ctx) => {
-    const sortedUsers = Object.entries(db.users)
-        .sort((a, b) => (b[1].messages || 0) - (a[1].messages || 0))
-        .slice(0, 20);
-
-    if (sortedUsers.length === 0) {
-        return ctx.reply('قائمة المتفاعلين فارغة حالياً.');
-    }
-
-    let text = 'توب اكثر 20 متفاعلين بالقروب :\n___________________\n\n';
-    
-    sortedUsers.forEach(([id, data], index) => {
-        let medal = `${index + 1} )`;
-        if (index === 0) medal = '🥇 )';
-        else if (index === 1) medal = '🥈 )';
-        else if (index === 2) medal = '🥉 )';
-
-        text += `${medal} ${data.messages || 0} | مستخدم\n`;
-    });
-
-    return ctx.reply(text);
-});
-
-// الاستجابة للكلمات والأوامر القصيرة (مم، خخ، كتم، الأوامر، إلخ)
+// أوامر الكتم ومسح المكتومين
 bot.on('text', (ctx, next) => {
     if (ctx.message.text.startsWith('/')) return next();
     
@@ -104,38 +89,60 @@ bot.on('text', (ctx, next) => {
     saveDB();
 
     const text = ctx.message.text.trim();
+    const chatId = ctx.chat.id;
 
-    // الرد على الكلمات المحددة التي ذكرتيها
-    if (text === 'مم') {
-        return ctx.reply('مماتك العافية يا قلبي، تفضل آمرني بشيء؟');
-    }
-    if (text === 'خخ' || text === 'هههه' || text === 'ههه') {
-        return ctx.reply('دوم هالضحكة يارب 🤍');
-    }
+    if (!db.mutes[chatId]) db.mutes[chatId] = [];
+
+    // أمر كتم (إذا كان برد على شخص)
     if (text === 'كتم') {
-        return ctx.reply('عذراً، يحتاج استخدام أمر الكتم صلاحيات إدارية (قريباً سيتم تفعيله بالكامل).');
-    }
-    if (text === 'الأوامر' || text === 'قائمة الاوامر') {
-        return ctx.reply('📜 **قائمة أوامر تورايف:**\n\n• رتبتي / تفاعلي : لعرض رتبتك وتفاعلك\n• المتفاعلين : لعرض توب المتفاعلين\n• ايلاف : منشن المالكة\n• تورايف / بوت : للتحدث مع البوت');
-    }
+        if (!ctx.message.reply_to_message) {
+            return ctx.reply('• يجب الرد على رسالة الشخص المراد كتمه.');
+        }
+        const targetUser = ctx.message.reply_to_message.from;
+        const targetMention = mentionUser(targetUser);
 
-    if (text === 'ايلاف') {
-        return ctx.reply(`• منشن المالكة ↤ @j4xa7`, {
+        if (!db.mutes[chatId].includes(targetUser.id)) {
+            db.mutes[chatId].push(targetUser.id);
+            saveDB();
+        }
+
+        return ctx.reply(`• المستخدم ← ${targetMention}\n• تم كتمه .`, {
+            parse_mode: 'Markdown',
             reply_to_message_id: ctx.message.message_id
         });
     }
 
-    if (text.startsWith('تورايف') || text.startsWith('بوت')) {
-        const replies = ['هلا', 'عيوني', 'امر', 'وش بغيت', 'ها', 'عيون ايفي'];
-        if (text.includes('ايلاف')) {
-            return ctx.reply('إلاف هي مالكة ومبرمجة البوت الأبدية وأجمل شخص بالدنيا 😭💗');
+    // أمر مم (مسح المكتومين)
+    if (text === 'مم') {
+        const count = db.mutes[chatId].length;
+        if (count === 0) {
+            return ctx.reply('• لا يوجد مكتومين .', { reply_to_message_id: ctx.message.message_id });
         }
-        const randomReply = replies[Math.floor(Math.random() * replies.length)];
-        return ctx.reply(randomReply);
+        db.mutes[chatId] = [];
+        saveDB();
+        return ctx.reply(`• تم مسح ( ${count} ) من المكتومين .`, { reply_to_message_id: ctx.message.message_id });
+    }
+
+    // أمر خخ (مسح المكتومين عام)
+    if (text === 'خخ') {
+        return ctx.reply('• لا يوجد مكتومين عام .', { reply_to_message_id: ctx.message.message_id });
+    }
+
+    // منع المكتومين من التكلم
+    if (db.mutes[chatId] && db.mutes[chatId].includes(userId)) {
+        ctx.deleteMessage().catch(() => {});
+        return;
+    }
+
+    if (text === 'ايلاف') {
+        const userMention = mentionUser(ctx.from);
+        return ctx.reply(`• منشن المالكة ↤ @j4xa7`, {
+            reply_to_message_id: ctx.message.message_id
+        });
     }
 
     return next();
 });
 
 bot.launch();
-console.log('Bot is running with full commands support...');
+console.log('Bot is running with exact formats and mentions...');
