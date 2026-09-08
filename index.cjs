@@ -7,7 +7,7 @@ http.createServer((req, res) => {
     res.end('Torayf Bot is active!');
 }).listen(process.env.PORT || 3000);
 
-const bot = new Telegraf('8963407967:AAGFd-z2MsvV0Hj7EkoEEPQOrnFBsXv0qiw');
+const bot = new Telegraf('8963407967:AAEMfQ6NkTtIDY4f6b4palcck3TU82cOXQg');
 
 const DATA_FILE = './toraif_github_database.json';
 let db = { 
@@ -349,7 +349,7 @@ async function showCommandsMenu(ctx, isEdit = false) {
 
 bot.start(async (ctx) => {
     if (ctx.chat.type === 'private') {
-        const startText = 'أهلاً بك في البوت! يمكنك إضافته إلى مجموعتك لاستخدام كافة الخدمات.';
+        const startText = 'أهلاً بك في البوت! يعمل الآن بشكل نظيف وبدون أي روابط إجبارية.';
         return ctx.reply(startText, {
             reply_markup: {
                 inline_keyboard: [
