@@ -1331,4 +1331,578 @@ bot.on('edited_message', async (ctx) => {
         ensureChat(chatId);
 
         if (!db.settings[chatId].protection) return;
-        if (!db.settings[chat
+        if (!db.settings[chatId].preventEdits) return;
+
+        const rank = getUserRank(userId, chatId);
+
+        if (getRankVal(rank) >= 1) return;
+
+        await ctx.telegram.deleteMessage(
+            chatId,
+            ctx.editedMessage.message_id
+        ).catch(() => {});
+
+        await ctx.telegram.sendMessage(
+            chatId,
+            `${mentionUser(ctx.from)}، ممنوع إرسال تعديل الرسائل.`,
+            { parse_mode: 'HTML' }
+        ).catch(() => {});
+    } catch (error) {
+        console.error('Edited message error:', error);
+    }
+});
+
+/* =========================================================
+   أوامر المجموعة
+========================================================= */
+
+bot.on('text', async (ctx, next) => {
+    try {
+        if (!ctx.chat || ctx.chat.type === 'private') {
+            return next();
+        }
+
+        const text = ctx.message.text.trim();
+
+        if (!text) return next();
+
+        ensureChat(ctx.chat.id);
+        updateUserData(ctx);
+
+        const chatId = ctx.chat.id;
+        const userId = ctx.from.id;
+
+        const rank = getUserRank(userId, chatId);
+        const rankValue = getRankVal(rank);
+
+        /* الحماية */
+
+        const protectedMessage = await runMessageProtection(ctx);
+
+        if (protectedMessage) return;
+
+        /* أوامر البوت المختصرة للمطور */
+
+        if (text === 'ا') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            const target =
+                ctx.message.reply_to_message?.from || ctx.from;
+
+            const targetRank = getUserRank(target.id, chatId);
+
+            return ctx.reply(
+                `• معلومات العضو\n\n` +
+                `• الاسم: ${target.first_name || 'غير معروف'}\n` +
+                `• المعرف: ${target.username ? '@' + target.username : 'لا يوجد'}\n` +
+                `• الرتبة: ${getRankName(targetRank)}`
+            );
+        }
+
+        if (text === 'ق') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            return ctx.reply('• قوانين القروب.');
+        }
+
+        if (text === 'م') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            return ctx.reply(
+                `• معلومات القروب\n\n` +
+                `• الاسم: ${ctx.chat.title || 'غير معروف'}\n` +
+                `• المعرف: ${chatId}`
+            );
+        }
+
+        if (text === 'ح') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            const settings = db.settings[chatId];
+
+            return ctx.reply(
+                `• حالة القروب\n\n` +
+                `• الحماية: ${settings.protection ? 'مفتوحة' : 'مقفلة'}\n` +
+                `• الألعاب: ${settings.games ? 'مفتوحة' : 'مقفلة'}\n` +
+                `• الردود: ${settings.replies ? 'مفتوحة' : 'مقفلة'}`
+            );
+        }
+
+        /* المالك */
+
+        if (text === 'المالك' || text === 'مالك') {
+            return ctx.reply(
+                `• المالك الأساسي للبوت\n\n` +
+                `• المعرف: @j4xa7\n` +
+                `• الرتبة: Dev🎖️`
+            );
+        }
+
+        /* التفاعل */
+
+        if (text === 'تفاعلي') {
+            const member = getChatUser(chatId, userId);
+
+            return ctx.reply(
+                `• تفاعلك\n\n` +
+                `• الرسائل: ${member.messages}\n` +
+                `• النقاط: ${member.points}\n` +
+                `• الرتبة: ${getRankName(rank)}`
+            );
+        }
+
+        if (text === 'رتبتي') {
+            return ctx.reply(`• رتبتك الحالية: ${getRankName(rank)}`);
+        }
+
+        if (text === 'رتبته') {
+            const reply = ctx.message.reply_to_message;
+
+            if (!reply || !reply.from) {
+                return ctx.reply('• يجب الرد على العضو.');
+            }
+
+            const targetRank = getUserRank(reply.from.id, chatId);
+
+            return ctx.reply(
+                `• رتبة ${reply.from.first_name || 'العضو'}: ${getRankName(targetRank)}`
+            );
+        }
+
+        if (text === 'تفاعله') {
+            const reply = ctx.message.reply_to_message;
+
+            if (!reply || !reply.from) {
+                return ctx.reply('• يجب الرد على العضو.');
+            }
+
+            const member = getChatUser(chatId, reply.from.id);
+
+            return ctx.reply(
+                `• تفاعل ${reply.from.first_name || 'العضو'}\n\n` +
+                `• الرسائل: ${member.messages}\n` +
+                `• النقاط: ${member.points}`
+            );
+        }
+
+        if (text === 'المتفاعلين') {
+            const members = Object.values(db.chats[chatId].users || {})
+                .sort((a, b) => (b.points || 0) - (a.points || 0))
+                .slice(0, 20);
+
+            if (!members.length) {
+                return ctx.reply('• لا يوجد تفاعل مسجل حتى الآن.');
+            }
+
+            let output = '• المتفاعلين\n\n';
+
+            members.forEach((member, index) => {
+                output += `${index + 1}. ${member.name || member.username || member.id} — ${member.points || 0}\n`;
+            });
+
+            return ctx.reply(output);
+        }
+
+        if (text.startsWith('اضف تفاعل ')) {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            const reply = ctx.message.reply_to_message;
+
+            if (!reply || !reply.from) {
+                return ctx.reply('• يجب الرد على العضو.');
+            }
+
+            const amount = parseInt(
+                text.replace('اضف تفاعل ', '').trim()
+            );
+
+            if (!Number.isFinite(amount) || amount <= 0) {
+                return ctx.reply('• اكتب عدد التفاعل بشكل صحيح.');
+            }
+
+            const member = getChatUser(chatId, reply.from.id);
+
+            member.points += amount;
+
+            saveDB();
+
+            return ctx.reply(`• تم إضافة ${amount} نقطة تفاعل.`);
+        }
+
+        /* التنظيف */
+
+        const cleanType = getCleanType(text);
+
+        if (cleanType !== null) {
+            if (!hasRank(userId, chatId, 'myth')) {
+                return ctx.reply(requiredRank('myth'));
+            }
+
+            if (cleanType < 0 || cleanType > 9) {
+                return ctx.reply('• نوع التنظيف غير صحيح.');
+            }
+
+            return ctx.reply(
+                `• تم استلام أمر التنظيف من النوع ${cleanType}.\n` +
+                `• يتم حذف الرسائل التي يطابقها النوع من الرسائل التي يستطيع البوت الوصول إليها.`
+            );
+        }
+
+        /* مسح المكتومين */
+
+        if (text === 'مسح المكتومين' || text === 'مم') {
+            if (!hasRank(userId, chatId, 'myth')) {
+                return ctx.reply(requiredRank('myth'));
+            }
+
+            db.mutes[chatId] = {};
+
+            saveDB();
+
+            return ctx.reply('• تم مسح قائمة المكتومين.');
+        }
+
+        /* مسح المكتومين عام */
+
+        if (text === 'مسح المكتومين عام' || text === 'خخ') {
+            if (!hasRank(userId, chatId, 'myth_extra')) {
+                return ctx.reply(requiredRank('myth_extra'));
+            }
+
+            db.globalMutes[chatId] = {};
+
+            saveDB();
+
+            return ctx.reply('• تم مسح قائمة المكتومين عام.');
+        }
+
+        /* الإدارة */
+
+        const adminActions = {
+            'كتم': 'كتم',
+            'فك كتم': 'فك كتم',
+            'كتم عام': 'كتم عام',
+            'فك الكتم العام': 'فك الكتم العام',
+            'تقييد': 'تقييد',
+            'الغاء التقييد': 'الغاء التقييد',
+            'حظر': 'حظر',
+            'فك الحظر': 'فك الحظر',
+            'طرد': 'طرد',
+            'تحذير': 'تحذير',
+            'الغاء التحذير': 'الغاء التحذير'
+        };
+
+        if (adminActions[text]) {
+            return executeAdminAction(ctx, adminActions[text]);
+        }
+
+        /* الحماية */
+
+        const protectionHandled =
+            await executeProtectionCommand(ctx, text);
+
+        if (protectionHandled) return;
+
+        /* الألعاب */
+
+        if (text === 'قفل الالعاب') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            db.settings[chatId].games = false;
+
+            saveDB();
+
+            return ctx.reply('• تم قفل الألعاب.');
+        }
+
+        if (text === 'فتح الالعاب') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            db.settings[chatId].games = true;
+
+            saveDB();
+
+            return ctx.reply('• تم فتح الألعاب.');
+        }
+
+        /* الرتب */
+
+        const rankCommands = [
+            ['رفع مميز', 'special', 'main_owner'],
+            ['رفع مالك', 'owner', 'main_owner'],
+            ['رفع مالك اساسي', 'main_owner', 'myth'],
+            ['رفع اساس', 'main_owner', 'myth'],
+            ['رفع M', 'myth', 'myth_extra'],
+            ['رفع MY', 'myth_extra', 'dev2'],
+            ['رفع اكس', 'myth_extra', 'dev2'],
+            ['رفع ديف', 'dev2', 'dev'],
+            ['رفع مطور ثانوي', 'dev', 'dev']
+        ];
+
+        for (const [command, targetRank, requiredRank] of rankCommands) {
+            if (text === command) {
+                if (!hasRank(userId, chatId, requiredRank)) {
+                    return ctx.reply(requiredRank === 'dev'
+                        ? requiredRankMessage('dev')
+                        : requiredRankMessage(requiredRank));
+                }
+
+                const reply = ctx.message.reply_to_message;
+
+                if (!reply || !reply.from) {
+                    return ctx.reply('• يجب الرد على العضو المستهدف.');
+                }
+
+                const targetId = reply.from.id;
+
+                if (!canChangeRank(userId, targetId, chatId, targetRank)) {
+                    return ctx.reply('• لا يمكنك تغيير رتبة هذا العضو.');
+                }
+
+                if (targetRank === 'dev' || targetRank === 'dev2') {
+                    setGlobalRank(targetId, targetRank);
+                } else {
+                    setChatRank(chatId, targetId, targetRank);
+                }
+
+                return ctx.reply(
+                    `• تم رفع العضو إلى رتبة ${getRankName(targetRank)}.`
+                );
+            }
+        }
+
+        /* تنزيل الرتب */
+
+        if (
+            text.startsWith('تنزيل ') &&
+            !text.startsWith('تنزيل مطور ثانوي') &&
+            !text.startsWith('تنزيل ديف')
+        ) {
+            if (!hasRank(userId, chatId, 'main_owner')) {
+                return ctx.reply(requiredRank('main_owner'));
+            }
+
+            const reply = ctx.message.reply_to_message;
+
+            if (!reply || !reply.from) {
+                return ctx.reply('• يجب الرد على العضو.');
+            }
+
+            const targetId = reply.from.id;
+            const targetRank = getUserRank(targetId, chatId);
+
+            if (!canChangeRank(userId, targetId, chatId, 'member')) {
+                return ctx.reply('• لا يمكنك تنزيل رتبة هذا العضو.');
+            }
+
+            setChatRank(chatId, targetId, 'member');
+
+            return ctx.reply(
+                `• تم تنزيل العضو من رتبة ${getRankName(targetRank)} إلى عضو.`
+            );
+        }
+
+        /* الهمسات */
+
+        if (['اهمس', 'همسه', 'ه'].includes(text)) {
+            const reply = ctx.message.reply_to_message;
+
+            if (!reply || !reply.from) {
+                return ctx.reply('• يجب الرد على العضو.');
+            }
+
+            const target = reply.from;
+
+            const botInfo = await ctx.telegram.getMe();
+
+            return ctx.reply(
+                `• تم تحديد الهمسه لـ ↤ ${mentionUser(target)}\n` +
+                `• اضغط الزر لكتابة الهمسة`,
+                {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: 'اهمس هنا',
+                                    url: `https://t.me/${botInfo.username}?start=whisper_${chatId}_${target.id}`
+                                }
+                            ]
+                        ]
+                    }
+                }
+            );
+        }
+
+        /* الأوامر المخصصة */
+
+        if (text === 'اوامري') {
+            if (!isDev(userId)) {
+                return ctx.reply(requiredRank('dev2'));
+            }
+
+            const commands = Object.keys(
+                db.customCommands[chatId] || {}
+            );
+
+            return ctx.reply(
+                commands.length
+                    ? `• اوامرك:\n\n${commands.join('\n')}`
+                    : '• لا توجد أوامر مخصصة.'
+            );
+        }
+
+        if (text === 'ردودي') {
+            if (!isDev(userId)) {
+                return ctx.reply(requiredRank('dev2'));
+            }
+
+            const replies = Object.keys(
+                db.customReplies[chatId] || {}
+            );
+
+            return ctx.reply(
+                replies.length
+                    ? `• ردودك:\n\n${replies.join('\n')}`
+                    : '• لا توجد ردود مخصصة.'
+            );
+        }
+
+        /* قائمة الأوامر */
+
+        if (text === 'اوامر') {
+            return ctx.reply(
+                '• قائمة أوامر بوت تورايف',
+                mainMenu()
+            );
+        }
+
+        /* القروب */
+
+        if (text === 'قروب') {
+            return ctx.reply(
+                `• معلومات القروب\n\n` +
+                `• الاسم: ${ctx.chat.title || 'غير معروف'}\n` +
+                `• المعرف: ${chatId}`
+            );
+        }
+
+        /* الردود المخصصة */
+
+        if (
+            db.settings[chatId].replies &&
+            db.customReplies[chatId] &&
+            db.customReplies[chatId][text]
+        ) {
+            return ctx.reply(
+                db.customReplies[chatId][text]
+            );
+        }
+
+        /* الأوامر المختصرة */
+
+        if (text === 'د') {
+            if (!isDevMain(userId)) {
+                return ctx.reply(requiredRank('dev'));
+            }
+
+            try {
+                const invite = await ctx.telegram.createChatInviteLink(chatId);
+
+                return ctx.reply(
+                    `• رابط القروب:\n${invite.invite_link}`
+                );
+            } catch {
+                return ctx.reply('• تعذر إنشاء رابط القروب.');
+            }
+        }
+
+        return next();
+
+    } catch (error) {
+        console.error('Group handler error:', error);
+        return next();
+    }
+});
+
+/* =========================================================
+   أزرار القائمة
+========================================================= */
+
+bot.action('menu_main', async (ctx) => {
+    await ctx.answerCbQuery();
+
+    return ctx.editMessageText(
+        '• قائمة أوامر بوت تورايف',
+        mainMenu()
+    ).catch(() => {});
+});
+
+bot.action(/^menu_(dev|ranks|protection|games|music|custom|group)$/, async (ctx) => {
+    try {
+        const section = ctx.match[1];
+
+        await ctx.answerCbQuery();
+
+        const userId = ctx.from.id;
+
+        if (
+            section === 'dev' &&
+            !isDevMain(userId)
+        ) {
+            return ctx.answerCbQuery(
+                'هذا القسم للمطور الأساسي فقط.',
+                { show_alert: true }
+            );
+        }
+
+        return ctx.editMessageText(
+            menuText(section),
+            backButton()
+        ).catch(() => {});
+    } catch (error) {
+        console.error(error);
+    }
+});
+
+/* =========================================================
+   إغلاق الأخطاء
+========================================================= */
+
+bot.catch((error, ctx) => {
+    console.error(
+        'Telegram bot error:',
+        error,
+        'Update:',
+        ctx?.update?.update_id
+    );
+});
+
+/* =========================================================
+   تشغيل البوت
+========================================================= */
+
+bot.launch()
+    .then(() => {
+        console.log('Toraif Bot is running.');
+    })
+    .catch((error) => {
+        console.error('Failed to launch bot:', error);
+    });
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
