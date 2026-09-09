@@ -1,10 +1,16 @@
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 
-const BOT_TOKEN = '8963407967:AAEMfQ6NkTtIDY4f6b4palcck3TU82cOXQg';
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+if (!BOT_TOKEN) {8963407967:AAEMfQ6NkTtIDY4f6b4palcck3TU82cOXQg
+    throw new Error('BOT_TOKEN غير موجود في Replit Secrets');
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
 const DB_FILE = 'database.json';
+
 let db = {
     users: {},
     chats: {},
@@ -18,378 +24,1311 @@ let db = {
     bank: {},
     games: {},
     subscribers: [],
-    developers: []
+    developers: [],
+    userState: {}
 };
 
-if (fs.existsSync(DB_FILE)) {
+function loadDB() {
+    if (!fs.existsSync(DB_FILE)) return;
+
     try {
-        db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    } catch (e) {
-        console.error('Error loading DB:', e);
+        const saved = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+
+        db = {
+            ...db,
+            ...saved,
+            users: saved.users || {},
+            chats: saved.chats || {},
+            mutes: saved.mutes || {},
+            globalMutes: saved.globalMutes || {},
+            settings: saved.settings || {},
+            customCommands: saved.customCommands || {},
+            customReplies: saved.customReplies || {},
+            forbiddenWords: saved.forbiddenWords || {},
+            whispers: saved.whispers || {},
+            bank: saved.bank || {},
+            games: saved.games || {},
+            subscribers: saved.subscribers || [],
+            developers: saved.developers || [],
+            userState: saved.userState || {}
+        };
+    } catch (error) {
+        console.error('خطأ في تحميل قاعدة البيانات:', error);
     }
 }
+
+loadDB();
 
 function saveDB() {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    } catch (error) {
+        console.error('خطأ في حفظ قاعدة البيانات:', error);
+    }
 }
 
-// هرمية الرتب الدقيقة
+/* =========================================================
+   الرتب
+========================================================= */
+
 const RANK_HIERARCHY = {
-    member: 1,
-    special: 2,
-    owner: 3,
-    main_owner: 4,
-    myth: 5,
-    myth_extra: 6,
-    dev2: 7,
-    dev: 8
+    member: 0,
+    special: 1,
+    owner: 2,
+    main_owner: 3,
+    myth: 4,
+    myth_extra: 5,
+    dev2: 6,
+    dev: 7
 };
 
-function getRankVal(rankKey) {
-    return RANK_HIERARCHY[rankKey] || 1;
+const RANK_NAMES = {
+    member: 'عضو',
+    special: 'مميز',
+    owner: 'مالك',
+    main_owner: 'مالك أساسي',
+    myth: 'Myth',
+    myth_extra: 'Myth🎖️',
+    dev2: 'Dev²🎖️',
+    dev: 'Dev🎖️'
+};
+
+function getRankVal(rank) {
+    return RANK_HIERARCHY[rank] ?? 0;
 }
 
-function getUserRank(userId, username = '') {
-    if (userId === 777777777 || username === 'j4xa7' || (db.developers && db.developers.includes(userId))) {
-        db.users[userId] = db.users[userId] || {};
-        db.users[userId].rank = 'dev';
-        saveDB();
-        return 'dev';
-    }
-    if (!db.users[userId]) {
-        db.users[userId] = { rank: 'member', messages: 0, points: 0, balance: 0 };
-        saveDB();
-    }
-    return db.users[userId].rank || 'member';
+function getRankName(rank) {
+    return RANK_NAMES[rank] || 'عضو';
 }
+
+function ensureUser(userId) {
+    if (!db.users[userId]) {
+        db.users[userId] = {
+            id: userId,
+            username: '',
+            name: '',
+            rank: 'member',
+            messages: 0,
+            points: 0,
+            balance: 0
+        };
+    }
+
+    return db.users[userId];
+}
+
+function ensureChat(chatId) {
+    if (!db.chats[chatId]) {
+        db.chats[chatId] = {
+            id: chatId,
+            users: {},
+            messages: 0
+        };
+    }
+
+    if (!db.settings[chatId]) {
+        db.settings[chatId] = {
+            protection: true,
+            autoProtection: true,
+            violations: true,
+            violationsLocked: false,
+            games: true,
+            replies: true,
+            bank: true,
+
+            preventLinks: true,
+            preventEdits: true,
+            preventRepeats: true,
+            preventAds: true,
+            preventMentions: true,
+            preventForwards: true,
+
+            autoWarnings: true,
+            autoMute: true,
+            autoBan: false,
+
+            warningLimit: 3,
+
+            lockChat: false,
+            lockMedia: false,
+            lockLinks: false,
+            lockPhotos: false,
+            lockVideos: false,
+            lockFiles: false,
+            lockStickers: false,
+            lockGif: false,
+            lockAudio: false,
+            lockForward: false,
+            lockMentions: false,
+
+            allMention: true
+        };
+    }
+
+    return db.chats[chatId];
+}
+
+function getChatUser(chatId, userId) {
+    ensureChat(chatId);
+
+    if (!db.chats[chatId].users[userId]) {
+        db.chats[chatId].users[userId] = {
+            id: userId,
+            rank: 'member',
+            messages: 0,
+            points: 0,
+            warnings: 0
+        };
+    }
+
+    return db.chats[chatId].users[userId];
+}
+
+function getUserRank(userId, chatId = null) {
+    const user = ensureUser(userId);
+
+    /*
+      Dev🎖️ و Dev²🎖️ عالميين.
+      باقي الرتب خاصة بالقروب.
+    */
+
+    if (user.rank === 'dev') return 'dev';
+    if (user.rank === 'dev2') return 'dev2';
+
+    if (chatId !== null) {
+        return getChatUser(chatId, userId).rank || 'member';
+    }
+
+    return user.rank || 'member';
+}
+
+function setChatRank(chatId, userId, rank) {
+    const member = getChatUser(chatId, userId);
+    member.rank = rank;
+    saveDB();
+}
+
+function setGlobalRank(userId, rank) {
+    const user = ensureUser(userId);
+    user.rank = rank;
+    saveDB();
+}
+
+function hasRank(userId, chatId, requiredRank) {
+    return getRankVal(getUserRank(userId, chatId)) >= getRankVal(requiredRank);
+}
+
+function requiredRank(requiredRank) {
+    return `• هذا الامر يخص ↤ ｢ ${getRankName(requiredRank)} ｣`;
+}
+
+function isDev(userId) {
+    return getRankVal(getUserRank(userId)) >= 6;
+}
+
+function isDevMain(userId) {
+    return getRankVal(getUserRank(userId)) >= 7;
+}
+
+/* =========================================================
+   معلومات المستخدم
+========================================================= */
+
+function updateUserData(ctx) {
+    const userId = ctx.from.id;
+    const user = ensureUser(userId);
+
+    user.username = ctx.from.username || '';
+    user.name = ctx.from.first_name || '';
+
+    if (ctx.chat && ctx.chat.type !== 'private') {
+        const chatUser = getChatUser(ctx.chat.id, userId);
+
+        chatUser.username = ctx.from.username || '';
+        chatUser.name = ctx.from.first_name || '';
+
+        chatUser.messages++;
+        chatUser.points++;
+
+        db.chats[ctx.chat.id].messages++;
+    }
+
+    user.messages++;
+
+    saveDB();
+}
+
+/* =========================================================
+   المشتركين
+========================================================= */
 
 function addSubscriber(userId) {
     db.subscribers = db.subscribers || [];
+
     if (!db.subscribers.includes(userId)) {
         db.subscribers.push(userId);
         saveDB();
     }
 }
 
-// التهيئة والهمسات في الخاص
-bot.start(async (ctx) => {
-    try {
-        const payload = ctx.startPayload;
-        const userId = ctx.from.id;
-        addSubscriber(userId);
+/* =========================================================
+   الحماية من معاقبة رتبة أعلى
+========================================================= */
 
-        if (payload && payload.startsWith('whisper_')) {
-            const parts = payload.split('_');
-            const chatId = parts[1];
-            const targetId = parts[2];
+function canPunish(executorId, targetId, chatId) {
+    const executorRank = getUserRank(executorId, chatId);
+    const targetRank = getUserRank(targetId, chatId);
 
-            db.userState = db.userState || {};
-            db.userState[userId] = { action: 'awaiting_whisper', chatId, targetId };
-            return ctx.reply('• أرسل الآن محتوى الهمسة السرية (نص، صورة، ملصق):');
-        }
+    return getRankVal(executorRank) > getRankVal(targetRank);
+}
 
-        if (payload && payload.startsWith('wh_view_')) {
-            const whisperId = payload.replace('wh_view_', '');
-            const whisper = db.whispers[whisperId];
-            if (!whisper) return ctx.reply('• عذراً، انتهت صلاحية هذه الهمسة أو تم قراءتها.');
+function canChangeRank(executorId, targetId, chatId, newRank) {
+    const executorRank = getUserRank(executorId, chatId);
+    const targetRank = getUserRank(targetId, chatId);
 
-            let contentTxt = whisper.content && whisper.content.text ? whisper.content.text : '[محتوى سري أو صورة]';
-            return ctx.reply(`• محتوى الهمسة السرية:\n\n${contentTxt}`, {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '💬 رد على الهمسة', callback_data: `wh_reply_${whisperId}` }]
-                    ]
-                }
-            });
-        }
+    const executorValue = getRankVal(executorRank);
+    const targetValue = getRankVal(targetRank);
+    const newValue = getRankVal(newRank);
 
-        return ctx.reply('• أهلاً بك في بوت تورايف المتطور للحماية والألعاب والخدمات.', {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '➕ اضفني لمجموعتك', url: `https://t.me/${ctx.botInfo.username}?startgroup=true` }]
-                ]
-            }
-        });
-    } catch (e) {
-        console.error('Start error:', e);
+    if (executorId === targetId) return false;
+
+    if (targetValue >= executorValue) return false;
+
+    if (newValue >= executorValue) return false;
+
+    return true;
+}
+
+/* =========================================================
+   منشن
+========================================================= */
+
+function mentionUser(user) {
+    if (!user) return 'العضو';
+
+    const name = user.first_name || user.username || 'العضو';
+
+    return `<a href="tg://user?id=${user.id}">${escapeHtml(name)}</a>`;
+}
+
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/* =========================================================
+   إعدادات الحماية
+========================================================= */
+
+const protectionCommands = {
+    'تفعيل منع الروابط': ['preventLinks', true],
+    'تعطيل منع الروابط': ['preventLinks', false],
+
+    'تفعيل منع التعديل': ['preventEdits', true],
+    'تعطيل منع التعديل': ['preventEdits', false],
+
+    'تفعيل منع التكرار': ['preventRepeats', true],
+    'تعطيل منع التكرار': ['preventRepeats', false],
+
+    'تفعيل منع الإعلانات': ['preventAds', true],
+    'تعطيل منع الإعلانات': ['preventAds', false],
+
+    'تفعيل منع المنشن': ['preventMentions', true],
+    'تعطيل منع المنشن': ['preventMentions', false],
+
+    'تفعيل منع الفوروارد': ['preventForwards', true],
+    'تعطيل منع الفوروارد': ['preventForwards', false],
+
+    'تفعيل الإنذارات': ['autoWarnings', true],
+    'تعطيل الإنذارات': ['autoWarnings', false],
+
+    'تفعيل الكتم التلقائي': ['autoMute', true],
+    'تعطيل الكتم التلقائي': ['autoMute', false],
+
+    'تفعيل الحظر التلقائي': ['autoBan', true],
+    'تعطيل الحظر التلقائي': ['autoBan', false]
+};
+
+/* =========================================================
+   أوامر الحماية
+========================================================= */
+
+async function executeProtectionCommand(ctx, text) {
+    const chatId = ctx.chat.id;
+    const userId = ctx.from.id;
+
+    ensureChat(chatId);
+
+    if (!hasRank(userId, chatId, 'owner')) {
+        await ctx.reply(requiredRank('مالك'));
+        return true;
     }
-});
 
-bot.on('message', async (ctx, next) => {
-    try {
-        if (ctx.chat.type !== 'private') return next();
-        const userId = ctx.from.id;
-        addSubscriber(userId);
+    const settings = db.settings[chatId];
 
-        db.userState = db.userState || {};
-        const state = db.userState[userId];
-
-        if (state && state.action === 'awaiting_whisper') {
-            const { targetId } = state;
-            delete db.userState[userId];
-
-            const whisperId = 'wh_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-            db.whispers = db.whispers || {};
-            db.whispers[whisperId] = {
-                senderId: userId,
-                senderName: ctx.from.first_name,
-                content: ctx.message
-            };
-            saveDB();
-
-            await ctx.reply('• تم إرسال الهمسة السرية بنجاح.');
-            const botInfo = await ctx.telegram.getMe();
-
-            return ctx.telegram.sendMessage(targetId, `• وصلت لك همسة سرية جديدة 💌\n• اضغط الزر أدناه لقراءتها بسريّة تامة:`, {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '👁️ رؤية الهمسة', url: `https://t.me/${botInfo.username}?start=wh_view_${whisperId}` }]
-                    ]
-                }
-            });
-        }
-
-        return next();
-    } catch (e) {
-        return next();
+    if (text === 'تفعيل الحماية') {
+        settings.protection = true;
+        saveDB();
+        await ctx.reply('• تم تفعيل الحماية.');
+        return true;
     }
-});
 
-// معالجة كافة أوامر المجموعات بدقة واحترافية
-bot.on('text', async (ctx, next) => {
-    try {
-        if (ctx.chat.type === 'private') return next();
+    if (text === 'تعطيل الحماية') {
+        settings.protection = false;
+        saveDB();
+        await ctx.reply('• تم تعطيل الحماية.');
+        return true;
+    }
 
-        const userId = ctx.from.id;
-        const username = ctx.from.username || '';
-        const chatId = ctx.chat.id;
-        const text = ctx.message && ctx.message.text ? ctx.message.text.trim() : '';
+    if (text === 'قفل الحماية') {
+        settings.protection = false;
+        saveDB();
+        await ctx.reply('• تم قفل الحماية.');
+        return true;
+    }
 
-        if (!text) return next();
+    if (text === 'فتح الحماية') {
+        settings.protection = true;
+        saveDB();
+        await ctx.reply('• تم فتح الحماية.');
+        return true;
+    }
 
-        getUserRank(userId, username);
-        db.users[userId].messages = (db.users[userId].messages || 0) + 1;
+    if (text === 'حالة الحماية') {
+        await ctx.reply(
+            `• حالة الحماية: ${settings.protection ? 'مفتوحة' : 'مقفلة'}\n` +
+            `• الحماية التلقائية: ${settings.autoProtection ? 'مفعلة' : 'معطلة'}\n` +
+            `• المخالفات: ${settings.violations ? 'مفعلة' : 'معطلة'}`
+        );
+        return true;
+    }
+
+    if (text === 'تفعيل الحماية التلقائية') {
+        settings.autoProtection = true;
+        saveDB();
+        await ctx.reply('• تم تفعيل الحماية التلقائية.');
+        return true;
+    }
+
+    if (text === 'تعطيل الحماية التلقائية') {
+        settings.autoProtection = false;
+        saveDB();
+        await ctx.reply('• تم تعطيل الحماية التلقائية.');
+        return true;
+    }
+
+    if (text === 'فتح المخالفات') {
+        settings.violationsLocked = false;
+        settings.violations = true;
+        saveDB();
+        await ctx.reply('• تم فتح المخالفات.');
+        return true;
+    }
+
+    if (text === 'قفل المخالفات') {
+        settings.violationsLocked = true;
+        settings.violations = false;
+        saveDB();
+        await ctx.reply('• تم قفل المخالفات.');
+        return true;
+    }
+
+    if (protectionCommands[text]) {
+        const [key, value] = protectionCommands[text];
+
+        settings[key] = value;
+
         saveDB();
 
-        const userRank = getUserRank(userId, username);
-        const userRankVal = getRankVal(userRank);
+        await ctx.reply(
+            value
+                ? `• تم تفعيل ${key}.`
+                : `• تم تعطيل ${key}.`
+        );
 
-        // إعدادات القروب
-        db.settings[chatId] = db.settings[chatId] || {
-            protection: true,
-            autoProtection: true,
-            games: true,
-            replies: true,
-            bank: true,
-            violations: true,
-            violationsLocked: false
-        };
-        const settings = db.settings[chatId];
+        return true;
+    }
 
-        // 1. رد البوت الطريف عند الرد عليه بأمر إداري
-        if (ctx.message.reply_to_message && ctx.message.reply_to_message.from && ctx.message.reply_to_message.from.id === ctx.botInfo.id) {
-            const adminCmds = ['كتم', 'تقييد', 'طرد', 'اهمس', 'همسه', 'ه', 'حظر', 'تحذير'];
-            if (adminCmds.some(cmd => text.startsWith(cmd))) {
-                return ctx.reply('(ياغببي ذا Bot)', { reply_to_message_id: ctx.message.message_id });
-            }
-        }
+    return false;
+}
 
-        // 2. أمر المالك (على حسابك وصورتك ويوزرك أنت)
-        if (text === 'المالك' || text === 'مالك') {
-            try {
-                const photos = await ctx.telegram.getUserProfilePhotos(userId);
-                let photoUrl = 'https://t.me/j4xa7';
-                if (photos && photos.total_count > 0) {
-                    const fileId = photos.photos[0][0].file_id;
-                    const fileLink = await ctx.telegram.getFileLink(fileId);
-                    photoUrl = fileLink.href;
+/* =========================================================
+   الإدارة الفعلية
+========================================================= */
+
+async function executeAdminAction(ctx, action) {
+    const chatId = ctx.chat.id;
+    const executorId = ctx.from.id;
+
+    if (!hasRank(executorId, chatId, 'owner')) {
+        await ctx.reply(requiredRank('مالك'));
+        return;
+    }
+
+    const reply = ctx.message.reply_to_message;
+
+    if (!reply || !reply.from) {
+        await ctx.reply('• يجب الرد على العضو المستهدف.');
+        return;
+    }
+
+    const targetId = reply.from.id;
+
+    if (targetId === ctx.botInfo.id) {
+        await ctx.reply('(ياغببي ذا Bot)');
+        return;
+    }
+
+    if (!canPunish(executorId, targetId, chatId)) {
+        await ctx.reply('• لا يمكنك تنفيذ الأمر على رتبة مساوية أو أعلى منك.');
+        return;
+    }
+
+    try {
+        if (action === 'كتم') {
+            await ctx.telegram.restrictChatMember(chatId, targetId, {
+                permissions: {
+                    can_send_messages: false
                 }
-                return ctx.replyWithPhoto(photoUrl, {
-                    caption: `• معلومات المالك الأساسي:\n\n• الاسم: ${ctx.from.first_name}\n• المعرف: @${username || 'j4xa7'}\n• المطور الأساسي للبوت`,
-                    reply_to_message_id: ctx.message.message_id
-                });
-            } catch (e) {
-                return ctx.reply(`• المالك الأساسي: @${username || 'j4xa7'}`, { reply_to_message_id: ctx.message.message_id });
-            }
-        }
+            });
 
-        // 3. أوامر التفاعل والرتب
-        if (text === 'رتبتي' || text === 'تفاعلي') {
-            const msgs = db.users[userId].messages || 0;
-            return ctx.reply(`• رتبتك الحالية: ｢ ${userRank.toUpperCase()} ｣\n• تفاعلك: ${msgs} رسالة`, { reply_to_message_id: ctx.message.message_id });
-        }
+            db.mutes[chatId] = db.mutes[chatId] || {};
+            db.mutes[chatId][targetId] = true;
 
-        if (text === 'المتفاعلين' || text === 'قائمة المتفاعلين') {
-            return ctx.reply('• قائمة المتفاعلين في المجموعة نشطة وتعمل بكفاءة.', { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text.startsWith('اضف تفاعل ')) {
-            if (userRankVal < getRankVal('owner')) return ctx.reply('• للمشرفين فقط.');
-            if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على العضو.');
-            const targetId = ctx.message.reply_to_message.from.id;
-            const amount = parseInt(text.replace('اضف تفاعل ', '')) || 0;
-            db.users[targetId] = db.users[targetId] || { messages: 0, points: 0 };
-            db.users[targetId].messages = (db.users[targetId].messages || 0) + amount;
             saveDB();
-            return ctx.reply(`• تمت إضافة ${amount} نقطة تفاعل بنجاح ✅`, { reply_to_message_id: ctx.message.message_id });
-        }
 
-        // 4. أوامر التنظيف الفعلي
-        if (text === 'تنظيف' || text.startsWith('تنظيف ')) {
-            if (userRankVal < getRankVal('myth')) return ctx.reply('• هذا الأمر يخص رتبة Myth فما فوق.');
-            let count = 10;
-            if (text.startsWith('تنظيف ')) {
-                count = parseInt(text.replace('تنظيف ', '')) || 10;
-            }
-            try {
-                for (let i = 0; i < count; i++) {
-                    await ctx.telegram.deleteMessage(chatId, ctx.message.message_id - i).catch(() => {});
-                }
-            } catch (e) {}
+            await ctx.reply('• تم كتم العضو.');
             return;
         }
 
-        if (text === 'مسح المكتومين' || text === 'مسح المخالفات') {
-            if (userRankVal < getRankVal('owner')) return ctx.reply('• للمشرفين فقط.');
-            db.mutes = db.mutes || {};
-            db.mutes[chatId] = [];
+        if (action === 'فك كتم') {
+            await ctx.telegram.restrictChatMember(chatId, targetId, {
+                permissions: {
+                    can_send_messages: true,
+                    can_send_audios: true,
+                    can_send_documents: true,
+                    can_send_photos: true,
+                    can_send_videos: true,
+                    can_send_video_notes: true,
+                    can_send_voice_notes: true,
+                    can_send_polls: true,
+                    can_send_other_messages: true,
+                    can_add_web_page_previews: true
+                }
+            });
+
+            if (db.mutes[chatId]) {
+                delete db.mutes[chatId][targetId];
+            }
+
             saveDB();
-            return ctx.reply('• تم مسح المكتومين والمخالفات بنجاح 🗑️', { reply_to_message_id: ctx.message.message_id });
+
+            await ctx.reply('• تم فك الكتم.');
+            return;
         }
 
-        // 5. أوامر الإدارة والكتم والطرد والتقييد
-        const adminActionCmds = ['كتم', 'مم', 'تقييد', 'الغاء التقييد', 'حظر', 'فك الحظر', 'طرد', 'تحذير', 'الغاء التحذير'];
-        if (adminActionCmds.includes(text)) {
-            if (userRankVal < getRankVal('owner')) return ctx.reply('• هذا الأمر للمشرفين فقط.');
-            if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على العضو المستهدف.');
-            const target = ctx.message.reply_to_message.from;
-            return ctx.reply(`• تم تنفيذ إجراء (${text}) بنجاح للمستخدم: ${target.first_name}`, { reply_to_message_id: ctx.message.message_id });
+        if (action === 'كتم عام') {
+            await ctx.telegram.restrictChatMember(chatId, targetId, {
+                permissions: {
+                    can_send_messages: false
+                }
+            });
+
+            db.globalMutes[chatId] = db.globalMutes[chatId] || {};
+            db.globalMutes[chatId][targetId] = true;
+
+            saveDB();
+
+            await ctx.reply('• تم الكتم العام.');
+            return;
         }
 
-        // 6. أوامر رفع وتنزيل الرتب الفعلية في قاعدة البيانات
-        const rankActions = {
-            'رفع مميز': 'special', 'تنزيل مميز': 'member',
-            'رفع مالك': 'owner', 'تنزيل مالك': 'member',
-            'رفع مالك اساسي': 'main_owner', 'رفع اساس': 'main_owner',
-            'myth': 'myth', 'رفع m': 'myth', 'رفع my': 'myth',
-            'dev2': 'dev2', 'رفع ديف': 'dev2',
-            'dev': 'dev', 'رفع مطور ثانوي': 'dev'
+        if (action === 'فك الكتم العام') {
+            if (db.globalMutes[chatId]) {
+                delete db.globalMutes[chatId][targetId];
+            }
+
+            await ctx.telegram.restrictChatMember(chatId, targetId, {
+                permissions: {
+                    can_send_messages: true,
+                    can_send_audios: true,
+                    can_send_documents: true,
+                    can_send_photos: true,
+                    can_send_videos: true,
+                    can_send_video_notes: true,
+                    can_send_voice_notes: true,
+                    can_send_polls: true,
+                    can_send_other_messages: true,
+                    can_add_web_page_previews: true
+                }
+            });
+
+            saveDB();
+
+            await ctx.reply('• تم فك الكتم العام.');
+            return;
+        }
+
+        if (action === 'تقييد') {
+            await ctx.telegram.restrictChatMember(chatId, targetId, {
+                permissions: {
+                    can_send_messages: false,
+                    can_send_audios: false,
+                    can_send_documents: false,
+                    can_send_photos: false,
+                    can_send_videos: false,
+                    can_send_video_notes: false,
+                    can_send_voice_notes: false,
+                    can_send_polls: false,
+                    can_send_other_messages: false,
+                    can_add_web_page_previews: false
+                }
+            });
+
+            await ctx.reply('• تم تقييد العضو.');
+            return;
+        }
+
+        if (action === 'الغاء التقييد') {
+            await ctx.telegram.restrictChatMember(chatId, targetId, {
+                permissions: {
+                    can_send_messages: true,
+                    can_send_audios: true,
+                    can_send_documents: true,
+                    can_send_photos: true,
+                    can_send_videos: true,
+                    can_send_video_notes: true,
+                    can_send_voice_notes: true,
+                    can_send_polls: true,
+                    can_send_other_messages: true,
+                    can_add_web_page_previews: true
+                }
+            });
+
+            await ctx.reply('• تم إلغاء التقييد.');
+            return;
+        }
+
+        if (action === 'حظر') {
+            await ctx.telegram.banChatMember(chatId, targetId);
+
+            await ctx.reply('• تم حظر العضو.');
+            return;
+        }
+
+        if (action === 'فك الحظر') {
+            await ctx.telegram.unbanChatMember(chatId, targetId, {
+                only_if_banned: true
+            });
+
+            await ctx.reply('• تم فك الحظر.');
+            return;
+        }
+
+        if (action === 'طرد') {
+            await ctx.telegram.banChatMember(chatId, targetId);
+            await ctx.telegram.unbanChatMember(chatId, targetId);
+
+            await ctx.reply('• تم طرد العضو.');
+            return;
+        }
+
+        if (action === 'تحذير') {
+            const member = getChatUser(chatId, targetId);
+
+            member.warnings = (member.warnings || 0) + 1;
+
+            saveDB();
+
+            await ctx.reply(`• تم تحذير العضو.\n• عدد التحذيرات: ${member.warnings}`);
+
+            if (member.warnings >= 3 && db.settings[chatId].autoMute) {
+                await ctx.telegram.restrictChatMember(chatId, targetId, {
+                    permissions: {
+                        can_send_messages: false
+                    }
+                }).catch(() => {});
+
+                db.mutes[chatId] = db.mutes[chatId] || {};
+                db.mutes[chatId][targetId] = true;
+
+                saveDB();
+
+                await ctx.reply('• وصل العضو إلى الحد المسموح من التحذيرات وتم كتمه تلقائيًا.');
+            }
+
+            return;
+        }
+
+        if (action === 'الغاء التحذير') {
+            const member = getChatUser(chatId, targetId);
+
+            member.warnings = 0;
+
+            saveDB();
+
+            await ctx.reply('• تم إلغاء تحذيرات العضو.');
+            return;
+        }
+    } catch (error) {
+        console.error('Admin action error:', error);
+
+        await ctx.reply(
+            '• تعذر تنفيذ الأمر. تأكد أن البوت يملك صلاحيات الإدارة المطلوبة.'
+        );
+    }
+}
+
+/* =========================================================
+   التنظيف
+========================================================= */
+
+function getCleanType(text) {
+    if (text === 'تنظيف') return 9;
+
+    const match = text.match(/^تنظيف\s+(\d+)$/);
+
+    if (!match) return null;
+
+    return Number(match[1]);
+}
+
+function messageMatchesCleanType(message, type) {
+    if (!message) return false;
+
+    if (type === 0) {
+        return !!message.text;
+    }
+
+    if (type === 1) {
+        return !!message.photo;
+    }
+
+    if (type === 2) {
+        return !!message.video;
+    }
+
+    if (type === 3) {
+        return !!message.document;
+    }
+
+    if (type === 4) {
+        return !!message.sticker;
+    }
+
+    if (type === 5) {
+        return !!message.animation;
+    }
+
+    if (type === 6) {
+        return !!message.audio;
+    }
+
+    if (type === 7) {
+        return !!message.voice;
+    }
+
+    if (type === 8) {
+        const text = message.text || message.caption || '';
+        return /(https?:\/\/|t\.me\/|www\.)/i.test(text);
+    }
+
+    if (type === 9) {
+        return true;
+    }
+
+    return false;
+}
+
+/* =========================================================
+   القائمة
+========================================================= */
+
+function mainMenu() {
+    return Markup.inlineKeyboard([
+        [
+            Markup.button.callback('المطور', 'menu_dev'),
+            Markup.button.callback('الرتب', 'menu_ranks')
+        ],
+        [
+            Markup.button.callback('الحماية', 'menu_protection'),
+            Markup.button.callback('التفاعل والألعاب والفعاليات', 'menu_games')
+        ],
+        [
+            Markup.button.callback('الهمسات والأغاني', 'menu_music'),
+            Markup.button.callback('الأوامر المخصصة', 'menu_custom')
+        ],
+        [
+            Markup.button.callback('القروب', 'menu_group')
+        ]
+    ]);
+}
+
+function backButton() {
+    return Markup.inlineKeyboard([
+        [Markup.button.callback('رجوع', 'menu_main')]
+    ]);
+}
+
+function menuText(section) {
+    const menus = {
+        dev:
+`قسم المطور
+
+تفعيل الردود
+تعطيل الردود
+تفعيل البنك
+تعطيل البنك
+تفعيل التواصل
+تعطيل التواصل
+تفعيل الاشتراك الاجباري
+تعطيل الاشتراك الاجباري
+تغيير الاشتراك الاجباري
+تفعيل بوت الخدمة
+تعطيل بوت الخدمة
+تفعيل الاحصائيات
+تعطيل الاحصائيات
+تفعيل الزاجل
+تعطيل الزاجل
+تفعيل التنسيقات
+تعطيل التنسيقات
+
+رفع مطور ثانوي
+تنزيل مطور ثانوي
+رفع ديف
+تنزيل ديف
+رفع MY
+تنزيل MY
+رفع M
+تنزيل M
+رفع مالك اساسي
+تنزيل مالك اساسي
+قائمة المطورين
+مسح المطورين`,
+
+        ranks:
+`قسم الرتب
+
+مميز
+مالك
+مالك اساسي
+Myth
+Myth🎖️
+Dev²🎖️
+Dev🎖️
+
+رتبتي
+رتبته`,
+
+        protection:
+`قسم الحماية
+
+قفل الحماية
+فتح الحماية
+حالة الحماية
+تفعيل الحماية
+تعطيل الحماية
+تفعيل الحماية التلقائية
+تعطيل الحماية التلقائية
+
+تفعيل منع الروابط
+تعطيل منع الروابط
+تفعيل منع التعديل
+تعطيل منع التعديل
+تفعيل منع التكرار
+تعطيل منع التكرار
+تفعيل منع الإعلانات
+تعطيل منع الإعلانات
+تفعيل منع المنشن
+تعطيل منع المنشن
+تفعيل منع الفوروارد
+تعطيل منع الفوروارد
+
+كتم
+فك كتم
+كتم عام
+فك الكتم العام
+تقييد
+الغاء التقييد
+حظر
+فك الحظر
+طرد
+تحذير
+الغاء التحذير
+
+تنظيف
+تنظيف 10
+مسح المخالفات`,
+
+        games:
+`قسم التفاعل والألعاب والفعاليات
+
+تفاعلي
+المتفاعلين
+رتبتي
+رتبته
+تفاعله
+اضف تفاعل
+
+قفل الالعاب
+فتح الالعاب
+
+صور
+كلمة
+ترتيب
+مقال
+جملة
+حروف
+خمن
+لغز
+صح أو خطأ
+أكمل
+مقلوب
+فكك
+إيموجي
+سرعة
+حساب
+ذاكرة
+من أنا
+كلمة السر
+
+فعالية
+ابدأ فعالية
+فعالية + اسم الفعالية
+
+احكام
+انهاء احكام`,
+
+        music:
+`قسم الهمسات والأغاني
+
+اهمس
+همسه
+ه
+
+بحث أغنية + اسم الأغنية
+تشغيل + اسم الأغنية
+إيقاف
+استئناف
+تخطي
+إلغاء
+الأغنية
+قائمة التشغيل
+مسح القائمة`,
+
+        custom:
+`قسم الأوامر المخصصة
+
+اضف امر
+حذف امر
+اوامري
+اضف رد
+حذف رد
+ردودي`,
+
+        group:
+`قسم القروب
+
+قروب
+القوانين
+المالك
+
+ا
+ت
+ق
+م
+ن
+ح
+د`
+    };
+
+    return menus[section] || '• القسم غير موجود.';
+}
+
+/* =========================================================
+   أوامر /start
+========================================================= */
+
+bot.start(async (ctx) => {
+    try {
+        addSubscriber(ctx.from.id);
+
+        const payload = ctx.startPayload || '';
+
+        if (payload.startsWith('whisper_')) {
+            const parts = payload.split('_');
+
+            const chatId = parts[1];
+            const targetId = parts[2];
+
+            db.userState[ctx.from.id] = {
+                action: 'awaiting_whisper',
+                chatId,
+                targetId
+            };
+
+            saveDB();
+
+            return ctx.reply(
+                '• أرسل الآن الهمسة\n• يمكنك إرسال نص أو ملصق أو صورة أو قيف\n-'
+            );
+        }
+
+        return ctx.reply(
+            '• أهلًا بك في بوت تورايف.',
+            Markup.inlineKeyboard([
+                [
+                    Markup.button.url(
+                        'اضفني لمجموعتك',
+                        `https://t.me/${ctx.botInfo.username}?startgroup=true`
+                    )
+                ]
+            ])
+        );
+    } catch (error) {
+        console.error(error);
+    }
+});
+
+/* =========================================================
+   الهمسات في الخاص
+========================================================= */
+
+bot.on('message', async (ctx, next) => {
+    try {
+        if (!ctx.chat || ctx.chat.type !== 'private') {
+            return next();
+        }
+
+        addSubscriber(ctx.from.id);
+
+        const state = db.userState[ctx.from.id];
+
+        if (!state || state.action !== 'awaiting_whisper') {
+            return next();
+        }
+
+        delete db.userState[ctx.from.id];
+
+        const whisperId =
+            'wh_' +
+            Date.now() +
+            '_' +
+            Math.random().toString(36).slice(2, 8);
+
+        db.whispers[whisperId] = {
+            senderId: ctx.from.id,
+            senderName: ctx.from.first_name,
+            targetId: state.targetId,
+            chatId: state.chatId,
+            content: ctx.message,
+            createdAt: Date.now()
         };
 
-        for (const [cmdKey, targetRank] of Object.entries(rankActions)) {
-            if (text === cmdKey || text.startsWith(cmdKey + ' ')) {
-                if (userRankVal < getRankVal('main_owner')) return ctx.reply('• يتطلب رتبة عالية للتنفيذ.');
-                if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على العضو المستهدف بالترقية.');
-                const targetId = ctx.message.reply_to_message.from.id;
-                db.users[targetId] = db.users[targetId] || { rank: 'member' };
-                db.users[targetId].rank = targetRank;
-                saveDB();
-                return ctx.reply(`• تم ترقية العضو إلى رتبة ( ${targetRank.toUpperCase()} ) بنجاح ✅`, { reply_to_message_id: ctx.message.message_id });
-            }
-        }
+        saveDB();
 
-        // أمر ترقيه (عرض أزرار الصلاحيات)
-        if (text === 'ترقيه') {
-            if (userRankVal < getRankVal('owner')) return ctx.reply('• للمشرفين فقط.');
-            if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على العضو.');
-            return ctx.reply('• اختر الصلاحيات المطلوبة للعضو:', {
+        await ctx.reply('• تم ارسال الهمسة');
+
+        const sender = {
+            id: ctx.from.id,
+            first_name: ctx.from.first_name,
+            username: ctx.from.username
+        };
+
+        const botInfo = await ctx.telegram.getMe();
+
+        const message =
+            `• ياحلو ↤ ${mentionUser({
+                id: state.targetId,
+                first_name: 'المستلم'
+            })}\n` +
+            `• وصلتك همسة سرية من ↤ ${mentionUser(sender)}\n` +
+            `• انت وحدك تقدر تشوفها`;
+
+        await ctx.telegram.sendMessage(
+            state.targetId,
+            message,
+            {
+                parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '👑 مشرف كامل', callback_data: 'promote_full' },
-                            { text: '⭐ مميز', callback_data: 'promote_special' }
+                            {
+                                text: 'رؤية الهمسة',
+                                url: `https://t.me/${botInfo.username}?start=wh_view_${whisperId}`
+                            }
+                        ],
+                        [
+                            {
+                                text: 'رد على الهمسة',
+                                callback_data: `wh_reply_${whisperId}`
+                            }
                         ]
                     ]
-                },
-                reply_to_message_id: ctx.message.message_id
-            });
+                }
+            }
+        );
+
+        return;
+    } catch (error) {
+        console.error('Whisper error:', error);
+        return next();
+    }
+});
+
+/* =========================================================
+   أزرار الهمسات
+========================================================= */
+
+bot.action(/^wh_view_(.+)$/, async (ctx) => {
+    try {
+        const whisperId = ctx.match[1];
+        const whisper = db.whispers[whisperId];
+
+        if (!whisper) {
+            return ctx.answerCbQuery('انتهت الهمسة.');
         }
 
-        // 7. أوامر الحماية وتغيير الإعدادات وحفظها
-        if (text === 'تفعيل الحماية') { settings.protection = true; saveDB(); return ctx.reply('• تم تفعيل الحماية بنجاح ✅', { reply_to_message_id: ctx.message.message_id }); }
-        if (text === 'تعطيل الحماية') { settings.protection = false; saveDB(); return ctx.reply('• تم تعطيل الحماية ⚠️', { reply_to_message_id: ctx.message.message_id }); }
-        if (text === 'قفل المخالفات') { settings.violationsLocked = true; saveDB(); return ctx.reply('• تم قفل المخالفات 🔒', { reply_to_message_id: ctx.message.message_id }); }
-        if (text === 'فتح المخالفات') { settings.violationsLocked = false; saveDB(); return ctx.reply('• تم فتح المخالفات 🔓', { reply_to_message_id: ctx.message.message_id }); }
-        if (text === 'قفل الالعاب') { settings.games = false; saveDB(); return ctx.reply('• تم قفل الألعاب 🎮', { reply_to_message_id: ctx.message.message_id }); }
-        if (text === 'فتح الالعاب') { settings.games = true; saveDB(); return ctx.reply('• تم فتح الألعاب 🎮', { reply_to_message_id: ctx.message.message_id }); }
+        if (ctx.from.id !== whisper.targetId) {
+            return ctx.answerCbQuery('هذه الهمسة ليست لك.');
+        }
 
-        // 8. أوامر المطور والإدارة العليا
-        if (text === 'تفعيل الردود') { settings.replies = true; saveDB(); return ctx.reply('• تم تفعيل الردود المخصصة ✅'); }
-        if (text === 'تعطيل الردود') { settings.replies = false; saveDB(); return ctx.reply('• تم تعطيل الردود المخصصة ❌'); }
-        if (text === 'تفعيل البنك') { settings.bank = true; saveDB(); return ctx.reply('• تم تفعيل نظام البنك ✅'); }
-        if (text === 'تعطيل البنك') { settings.bank = false; saveDB(); return ctx.reply('• تم تعطيل نظام البنك ❌'); }
+        await ctx.answerCbQuery();
 
-        // 9. الهمسات السرية بالقروب
-        if (['اهمس', 'همسه', 'ه'].includes(text)) {
-            if (!ctx.message.reply_to_message) return ctx.reply('• يجب الرد على الشخص المراد إرسال الهمسة له.', { reply_to_message_id: ctx.message.message_id });
-            const targetUser = ctx.message.reply_to_message.from;
-            const botInfo = await ctx.telegram.getMe();
-            return ctx.reply(`• تم تجهيز همسة سرية لـ ｢ ${targetUser.first_name} ｣\n• اضغط الزر أدناه لكتابتها بالخاص:`, {
-                reply_to_message_id: ctx.message.message_id,
+        const message = whisper.content;
+
+        if (message.text) {
+            return ctx.reply(
+                `• الهمسة:\n\n${message.text}`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: 'رد على الهمسة',
+                                    callback_data: `wh_reply_${whisperId}`
+                                }
+                            ]
+                        ]
+                    }
+                }
+            );
+        }
+
+        if (message.photo) {
+            return ctx.replyWithPhoto(
+                message.photo[message.photo.length - 1].file_id,
+                {
+                    caption: '• الهمسة',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: 'رد على الهمسة',
+                                    callback_data: `wh_reply_${whisperId}`
+                                }
+                            ]
+                        ]
+                    }
+                }
+            );
+        }
+
+        if (message.sticker) {
+            await ctx.replyWithSticker(message.sticker.file_id);
+
+            return ctx.reply('• الهمسة', {
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '✍️ اضغط هنا لكتابة الهمسة', url: `https://t.me/${botInfo.username}?start=whisper_${chatId}_${targetUser.id}` }]
+                        [
+                            {
+                                text: 'رد على الهمسة',
+                                callback_data: `wh_reply_${whisperId}`
+                            }
+                        ]
                     ]
                 }
             });
         }
 
-        // 10. بحث وتشغيل الأغاني
-        if (text.startsWith('بحث أغنية ') || text.startsWith('بحث اغنية ') || text.startsWith('بحث ') || text.startsWith('تشغيل ')) {
-            const query = text.replace(/^(بحث أغنية |بحث اغنية |بحث |تشغيل )/, '').trim();
-            return ctx.reply(`• نتائج البحث الصوتي عن: ( ${query} )\n\n1️⃣ - النتيجة الأولى (HQ)\n2️⃣ - النتيجة الثانية (Remix)`, {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '▶️ تشغيل الأولى', callback_data: 'play_song_1' },
-                            { text: '▶️ تشغيل الثانية', callback_data: 'play_song_2' }
-                        ],
-                        [{ text: '⏹️ إيقاف', callback_data: 'stop_song' }]
-                    ]
-                },
-                reply_to_message_id: ctx.message.message_id
-            });
+        if (message.animation) {
+            return ctx.replyWithAnimation(
+                message.animation.file_id,
+                {
+                    caption: '• الهمسة',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: 'رد على الهمسة',
+                                    callback_data: `wh_reply_${whisperId}`
+                                }
+                            ]
+                        ]
+                    }
+                }
+            );
         }
 
-        // 11. إضافة وحذف الردود المخصصة الفعليّة
-        db.customReplies = db.customReplies || {};
-        db.customReplies[chatId] = db.customReplies[chatId] || {};
-
-        if (text.startsWith('اضف رد ')) {
-            if (userRankVal < getRankVal('owner')) return ctx.reply('• للمشرفين فقط.');
-            const parts = text.replace('اضف رد ', '').split(':');
-            if (parts.length < 2) return ctx.reply('• الصيغة: اضف رد الكلمة: الرد');
-            const keyword = parts[0].trim();
-            const replyVal = parts.slice(1).join(':').trim();
-            db.customReplies[chatId][keyword] = replyVal;
-            saveDB();
-            return ctx.reply(`• تم حفظ الرد للكلمة ( ${keyword} ) بنجاح ✅`, { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (text.startsWith('حذف رد ')) {
-            if (userRankVal < getRankVal('owner')) return ctx.reply('• للمشرفين فقط.');
-            const keyword = text.replace('حذف رد ', '').trim();
-            if (db.customReplies[chatId][keyword]) {
-                delete db.customReplies[chatId][keyword];
-                saveDB();
-                return ctx.reply(`• تم حذف الرد ( ${keyword} ) بنجاح 🗑️`, { reply_to_message_id: ctx.message.message_id });
-            }
-            return ctx.reply('• هذا الرد غير موجود.', { reply_to_message_id: ctx.message.message_id });
-        }
-
-        if (settings.replies && db.customReplies[chatId][text]) {
-            return ctx.reply(db.customReplies[chatId][text], { reply_to_message_id: ctx.message.message_id });
-        }
-
-        return next();
-    } catch (e) {
-        return next();
+        return ctx.reply('• لا يمكن قراءة نوع المحتوى هذا.');
+    } catch (error) {
+        console.error(error);
     }
 });
 
-bot.launch().then(() => {
-    console.log('Toraif bot fully integrated and operational with all handlers!');
+bot.action(/^wh_reply_(.+)$/, async (ctx) => {
+    try {
+        const whisperId = ctx.match[1];
+        const whisper = db.whispers[whisperId];
+
+        if (!whisper) {
+            return ctx.answerCbQuery('انتهت الهمسة.');
+        }
+
+        if (ctx.from.id !== whisper.targetId) {
+            return ctx.answerCbQuery('هذه الهمسة ليست لك.');
+        }
+
+        db.userState[ctx.from.id] = {
+            action: 'awaiting_whisper_reply',
+            whisperId,
+            targetId: whisper.senderId,
+            chatId: whisper.chatId
+        };
+
+        saveDB();
+
+        await ctx.answerCbQuery();
+
+        return ctx.reply(
+            '• أرسل الآن الهمسة\n• يمكنك إرسال نص أو ملصق أو صورة أو قيف\n-'
+        );
+    } catch (error) {
+        console.error(error);
+    }
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+/* =========================================================
+   الحماية الأساسية للرسائل
+========================================================= */
+
+async function runMessageProtection(ctx) {
+    if (!ctx.chat || ctx.chat.type === 'private') return false;
+
+    const chatId = ctx.chat.id;
+    const userId = ctx.from.id;
+
+    ensureChat(chatId);
+
+    const settings = db.settings[chatId];
+
+    if (!settings.protection || !settings.autoProtection) {
+        return false;
+    }
+
+    const rank = getUserRank(userId, chatId);
+
+    /*
+      أصحاب الرتب المعتمدة لا تحذف الحماية رسائلهم.
+    */
+    if (getRankVal(rank) >= 1) {
+        return false;
+    }
+
+    const message = ctx.message;
+
+    const text = message.text || message.caption || '';
+
+    if (
+        settings.preventLinks &&
+        /(https?:\/\/|www\.|t\.me\/|telegram\.me\/)/i.test(text)
+    ) {
+        await ctx.deleteMessage().catch(() => {});
+
+        await ctx.reply(
+            `${mentionUser(ctx.from)}، ممنوع إرسال الروابط.`,
+            { parse_mode: 'HTML' }
+        ).catch(() => {});
+
+        return true;
+    }
+
+    if (
+        settings.preventForwards &&
+        message.forward_origin
+    ) {
+        await ctx.deleteMessage().catch(() => {});
+
+        await ctx.reply(
+            `${mentionUser(ctx.from)}، ممنوع إرسال الفوروارد.`,
+            { parse_mode: 'HTML' }
+        ).catch(() => {});
+
+        return true;
+    }
+
+    if (
+        settings.preventMentions &&
+        text.includes('@')
+    ) {
+        await ctx.deleteMessage().catch(() => {});
+
+        await ctx.reply(
+            `${mentionUser(ctx.from)}، ممنوع إرسال المنشنات.`,
+            { parse_mode: 'HTML' }
+        ).catch(() => {});
+
+        return true;
+    }
+
+    if (
+        text.length > 1000
+    ) {
+        await ctx.deleteMessage().catch(() => {});
+
+        await ctx.reply(
+            `${mentionUser(ctx.from)}، ممنوع إرسال الرسائل الطويلة.`,
+            { parse_mode: 'HTML' }
+        ).catch(() => {});
+
+        return true;
+    }
+
+    const forbidden = db.forbiddenWords[chatId] || [];
+
+    const lowerText = text.toLowerCase();
+
+    for (const word of forbidden) {
+        if (word && lowerText.includes(String(word).toLowerCase())) {
+            await ctx.deleteMessage().catch(() => {});
+
+            await ctx.reply(
+                `${mentionUser(ctx.from)}، هذه الكلمة ممنوعة.`,
+                { parse_mode: 'HTML' }
+            ).catch(() => {});
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/* =========================================================
+   الرسائل المعدلة
+========================================================= */
+
+bot.on('edited_message', async (ctx) => {
+    try {
+        if (!ctx.chat || ctx.chat.type === 'private') return;
+
+        const chatId = ctx.chat.id;
+        const userId = ctx.from.id;
+
+        ensureChat(chatId);
+
+        if (!db.settings[chatId].protection) return;
+        if (!db.settings[chat
