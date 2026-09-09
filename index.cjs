@@ -112,7 +112,7 @@ bot.on('message', async (ctx, next) => {
 
     if (state && state.action === 'awaiting_whisper') {
         const chatId = state.chatId;
-        const whisperId = 'wh_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
+        const whisperId = 'wh_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
         
         db.whispers = db.whispers || {};
         db.whispers[whisperId] = {
