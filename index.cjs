@@ -112,7 +112,7 @@ bot.on('message', async (ctx, next) => {
 
     if (state && state.action === 'awaiting_whisper') {
         const chatId = state.chatId;
-        const whisperId = 'wh_' + Date.now() + '_' + Math.random().toString(36.substring(2, 7));
+        const whisperId = 'wh_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
         
         db.whispers = db.whispers || {};
         db.whispers[whisperId] = {
@@ -168,7 +168,6 @@ bot.action(/^view_wh_(.+)$/, async (ctx) => {
         return ctx.answerCbQuery('⚠️ هذه الهمسة غير موجودة أو انتهت صلاحيتها.', { show_alert: true });
     }
 
-    // إرسال محتوى الهمسة للمستلم في الخاص أو عبر الـ Alert / رسالة مؤقتة
     let contentDesc = 'رسالة نصية';
     if (whisper.content.photo) contentDesc = '[صورة سرية]';
     if (whisper.content.animation) contentDesc = '[GIF سري]';
@@ -178,7 +177,6 @@ bot.action(/^view_wh_(.+)$/, async (ctx) => {
     await ctx.reply(`🔓 <b>محتوى الهمسة السرية:</b>\n\n${contentDesc}`, { parse_mode: 'HTML' });
     await ctx.answerCbQuery('تم فتح الهمسة بنجاح ✅');
 
-    // إرسال إشعار لصاحب الهمسة بأن فلان شاف همسته
     try {
         await ctx.telegram.sendMessage(whisper.senderId, `• ${ctx.from.first_name}\n• شاف همستك .`);
     } catch (e) {}
@@ -216,7 +214,6 @@ bot.hears(['الاوامر', 'الأوامر', 'اوامر'], (ctx) => {
     });
 });
 
-// تفاعل أزرار الأقسام للقائمة
 bot.action('cmd_main', (ctx) => {
     return ctx.editMessageText('📋 قائمة أوامر تورايف', {
         reply_markup: {
