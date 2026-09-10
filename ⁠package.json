@@ -1,5 +1,5 @@
 {
-  "name": "eif-bot",
+  "name": "telegram-bot",
   "version": "1.0.0",
   "main": "index.cjs",
   "scripts": {
@@ -7,10 +7,6 @@
   },
   "dependencies": {
     "telegraf": "^4.16.3",
-    "mongoose": "^8.18.0",
-    "yt-search": "^2.12.1"
-  },
-  "engines": {
-    "node": ">=20"
+    "mongoose": "^8.3.0"
   }
 }
