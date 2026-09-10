@@ -34,18 +34,95 @@ const adminSessions = new Map();
 const pending = new Map();
 
 /* =========================================================
+   ردود البوت وحماية Reply على البوت
+========================================================= */
+
+let BOT_ID = null;
+
+async function getBotId(ctx) {
+  if (BOT_ID) return BOT_ID;
+
+  try {
+    const me = await ctx.telegram.getMe();
+    BOT_ID = me.id;
+    return BOT_ID;
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * كل رد داخل القروب يكون Reply على رسالة الأمر.
+ */
+function makeReply(ctx) {
+  const originalReply = ctx.reply.bind(ctx);
+
+  return async (text, extra = {}) => {
+    if (
+      ctx.chat &&
+      ctx.chat.type !== "private" &&
+      ctx.message?.message_id
+    ) {
+      extra = {
+        ...extra,
+        reply_parameters: {
+          ...(extra.reply_parameters || {}),
+          message_id: ctx.message.message_id
+        }
+      };
+    }
+
+    return originalReply(text, extra);
+  };
+}
+
+/*
+ * Middleware:
+ * إذا كان المستخدم يرد على رسالة البوت نفسه
+ * بأي أمر، البوت لا ينفذ الأمر.
+ */
+bot.use(async (ctx, next) => {
+  if (ctx.message?.reply_to_message?.from?.is_bot) {
+    const botId = await getBotId(ctx);
+
+    if (
+      botId &&
+      String(ctx.message.reply_to_message.from.id) ===
+        String(botId)
+    ) {
+      ctx.reply = makeReply(ctx);
+
+      return ctx.reply("ياغببي ذا البوت");
+    }
+  }
+
+  if (ctx.message) {
+    ctx.reply = makeReply(ctx);
+  }
+
+  return next();
+});
+
+/* =========================================================
    DATABASE
 ========================================================= */
 
 function loadDB() {
   try {
     if (fs.existsSync(DB_FILE)) {
-      const db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+      const db = JSON.parse(
+        fs.readFileSync(DB_FILE, "utf8")
+      );
 
       if (!db.chats) db.chats = {};
       if (!db.users) db.users = {};
-      if (!db.globalSubscribers) db.globalSubscribers = [];
+      if (!db.globalSubscribers) {
+        db.globalSubscribers = [];
+      }
       if (!db.devIds) db.devIds = [];
+      if (!db.whispers) db.whispers = {};
+      if (!db.marriages) db.marriages = {};
+      if (!db.banks) db.banks = {};
 
       if (DEV_IDS.length) {
         db.devIds = [
@@ -55,9 +132,6 @@ function loadDB() {
           ])
         ];
       }
-
-      if (!db.whispers) db.whispers = {};
-      if (!db.marriages) db.marriages = {};
 
       return db;
     }
@@ -111,19 +185,34 @@ function getChat(db, chatId) {
 
   if (!chat.users) chat.users = {};
   if (!chat.settings) chat.settings = {};
+
   if (chat.settings.allMention === undefined) {
     chat.settings.allMention = true;
   }
+
   if (chat.settings.gamesClosed === undefined) {
     chat.settings.gamesClosed = false;
   }
+
   if (!Array.isArray(chat.settings.bannedWords)) {
     chat.settings.bannedWords = [];
   }
-  if (!chat.customCommands) chat.customCommands = {};
-  if (!chat.customReplies) chat.customReplies = {};
-  if (!chat.channels) chat.channels = {};
-  if (!chat.games) chat.games = {};
+
+  if (!chat.customCommands) {
+    chat.customCommands = {};
+  }
+
+  if (!chat.customReplies) {
+    chat.customReplies = {};
+  }
+
+  if (!chat.channels) {
+    chat.channels = {};
+  }
+
+  if (!chat.games) {
+    chat.games = {};
+  }
 
   return chat;
 }
@@ -163,7 +252,9 @@ function registerUser(db, chatId, user) {
   }
 
   chat.users[id].username =
-    user.username || chat.users[id].username || "";
+    user.username ||
+    chat.users[id].username ||
+    "";
 
   chat.users[id].firstName =
     user.first_name ||
@@ -174,7 +265,7 @@ function registerUser(db, chatId, user) {
 }
 
 /* =========================================================
-   DEV
+   DEV + RANK
 ========================================================= */
 
 function isDev(db, userId) {
@@ -384,7 +475,7 @@ function adminKeyboard(session) {
 
   rows.push([
     Markup.button.callback(
-      "حفظ الصلاحيات",
+      "حفظ وتطبيق",
       "adm_save"
     )
   ]);
@@ -442,9 +533,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * منع شخص آخر من استخدام الجلسة.
-   */
   if (
     String(ctx.from.id) !==
     String(session.actorId)
@@ -465,9 +553,6 @@ async function validateAdminSession(ctx) {
     ctx.from
   );
 
-  /*
-   * إعادة فحص رتبة المنفذ والهدف.
-   */
   const actorRank =
     getRank(
       db,
@@ -482,9 +567,6 @@ async function validateAdminSession(ctx) {
       session.targetId
     );
 
-  /*
-   * لا يسمح لنفس الشخص.
-   */
   if (
     String(session.actorId) ===
     String(session.targetId)
@@ -499,9 +581,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * لا يسمح بالتعديل على Dev إلا من Dev.
-   */
   if (
     isDev(db, session.targetId) &&
     !isDev(db, session.actorId)
@@ -516,9 +595,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * فحص الرتبة كل مرة.
-   */
   if (
     !canTarget(
       db,
@@ -537,9 +613,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * فحص رتبة منفذ الأمر من Telegram.
-   */
   let actorMember;
 
   try {
@@ -548,7 +621,7 @@ async function validateAdminSession(ctx) {
         session.chatId,
         session.actorId
       );
-  } catch (e) {
+  } catch {
     await ctx.answerCbQuery(
       "تعذر التحقق من صلاحياتك في Telegram.",
       { show_alert: true }
@@ -557,9 +630,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * لازم يكون مالك أو مشرف معه can_promote_members.
-   */
   const canPromote =
     actorMember.status === "creator" ||
     (
@@ -578,9 +648,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * إعادة التحقق من الهدف في Telegram.
-   */
   let targetMember;
 
   try {
@@ -589,7 +656,7 @@ async function validateAdminSession(ctx) {
         session.chatId,
         session.targetId
       );
-  } catch (e) {
+  } catch {
     adminSessions.delete(ctx.from.id);
 
     await ctx.answerCbQuery(
@@ -614,10 +681,6 @@ async function validateAdminSession(ctx) {
     return null;
   }
 
-  /*
-   * لا يمكن للبوت تجاوز مالك القروب أو
-   * مشرف أعلى منه في Telegram.
-   */
   if (targetMember.status === "creator") {
     adminSessions.delete(ctx.from.id);
 
@@ -627,16 +690,6 @@ async function validateAdminSession(ctx) {
     );
 
     return null;
-  }
-
-  if (
-    actorMember.status === "administrator" &&
-    targetMember.status === "administrator"
-  ) {
-    /*
-     * Telegram نفسه يفرض ترتيب المشرفين.
-     * نترك التحقق النهائي لـ promoteChatMember.
-     */
   }
 
   session.createdAt = Date.now();
@@ -693,19 +746,35 @@ async function openAdminPanel(ctx) {
     target
   );
 
-  /*
-   * فحص رتبة البوت الداخلية.
-   */
-  if (
-    !canTarget(
+  const actorRank =
+    getRank(
       db,
       ctx.chat.id,
-      actorId,
+      actorId
+    );
+
+  const targetRank =
+    getRank(
+      db,
+      ctx.chat.id,
       targetId
-    )
+    );
+
+  if (
+    rankValue(actorRank) <=
+    rankValue(targetRank)
   ) {
     return ctx.reply(
       "لا يمكنك تعديل رتبة مساوية أو أعلى منك."
+    );
+  }
+
+  if (
+    isDev(db, targetId) &&
+    !isDev(db, actorId)
+  ) {
+    return ctx.reply(
+      "لا يمكنك تعديل المطور."
     );
   }
 
@@ -724,15 +793,12 @@ async function openAdminPanel(ctx) {
         ctx.chat.id,
         targetId
       );
-  } catch (e) {
+  } catch {
     return ctx.reply(
       "تعذر التحقق من العضو أو صلاحيات المشرف."
     );
   }
 
-  /*
-   * صلاحية المنفذ الفعلية في Telegram.
-   */
   const canPromote =
     actorMember.status === "creator" ||
     (
@@ -761,18 +827,6 @@ async function openAdminPanel(ctx) {
     );
   }
 
-  if (
-    isDev(db, targetId) &&
-    !isDev(db, actorId)
-  ) {
-    return ctx.reply(
-      "لا يمكنك تعديل المطور."
-    );
-  }
-
-  /*
-   * جلسة خاصة بهذا المستخدم.
-   */
   const session = {
     actorId,
     targetId,
@@ -786,9 +840,6 @@ async function openAdminPanel(ctx) {
     session
   );
 
-  /*
-   * أول واجهة.
-   */
   return ctx.reply(
     "صلاحيات المستخدم",
     Markup.inlineKeyboard([
@@ -817,19 +868,22 @@ bot.hears(
    فتح تعديل الصلاحيات
 ========================================================= */
 
-bot.action("adm_open", async ctx => {
-  const check =
-    await validateAdminSession(ctx);
+bot.action(
+  "adm_open",
+  async ctx => {
+    const check =
+      await validateAdminSession(ctx);
 
-  if (!check) return;
+    if (!check) return;
 
-  await ctx.editMessageText(
-    "صلاحيات المستخدم\n\nاختر الصلاحيات التي تريد إعطاءها:",
-    adminKeyboard(check.session)
-  );
+    await ctx.editMessageText(
+      "صلاحيات المستخدم\n\nاختر الصلاحيات التي تريد إعطاءها:",
+      adminKeyboard(check.session)
+    );
 
-  await ctx.answerCbQuery();
-});
+    await ctx.answerCbQuery();
+  }
+);
 
 /* =========================================================
    أزرار الصلاحيات
@@ -858,9 +912,6 @@ bot.action(
       );
     }
 
-    /*
-     * إعادة التحقق قبل كل زر.
-     */
     check.session.permissions[key] =
       !check.session.permissions[key];
 
@@ -873,19 +924,14 @@ bot.action(
           check.session
         ).reply_markup
       );
-    } catch (e) {
-      console.error(
-        "EDIT KEYBOARD:",
-        e.message
-      );
-    }
+    } catch {}
 
     await ctx.answerCbQuery();
   }
 );
 
 /* =========================================================
-   حفظ الصلاحيات
+   حفظ وتطبيق الصلاحيات
 ========================================================= */
 
 bot.action(
@@ -896,28 +942,17 @@ bot.action(
 
     if (!check) return;
 
-    const {
-      session
-    } = check;
+    const session =
+      check.session;
 
-    /*
-     * نسخة مستقلة من الصلاحيات.
-     */
     const rights = {
       ...session.permissions
     };
 
-    /*
-     * هذه الصلاحيات ليست صلاحيات
-     * مشرف سوبرغروب عادية.
-     */
     delete rights.can_post_messages;
     delete rights.can_edit_messages;
 
     try {
-      /*
-       * فحص نهائي قبل التطبيق.
-       */
       const finalActor =
         await ctx.telegram.getChatMember(
           session.chatId,
@@ -974,9 +1009,26 @@ bot.action(
         );
       }
 
-      /*
-       * تطبيق الصلاحيات فعليًا.
-       */
+      const db = loadDB();
+
+      if (
+        !canTarget(
+          db,
+          session.chatId,
+          session.actorId,
+          session.targetId
+        )
+      ) {
+        adminSessions.delete(
+          ctx.from.id
+        );
+
+        return ctx.answerCbQuery(
+          "لم تعد تملك صلاحية تعديل هذا العضو.",
+          { show_alert: true }
+        );
+      }
+
       await ctx.telegram.promoteChatMember(
         session.chatId,
         session.targetId,
@@ -991,19 +1043,16 @@ bot.action(
         "تم حفظ الصلاحيات وتطبيقها بنجاح."
       );
 
-      await ctx.answerCbQuery(
+      return ctx.answerCbQuery(
         "تم التطبيق"
       );
 
     } catch (e) {
       console.error(
         "promoteChatMember:",
-        e
+        e?.message || e
       );
 
-      /*
-       * لا تظهر رسالة نجاح إذا فشل Telegram.
-       */
       return ctx.answerCbQuery(
         "فشل تطبيق الصلاحيات في Telegram.",
         { show_alert: true }
@@ -1129,9 +1178,7 @@ bot.hears(
       }
 
       return ctx.reply(
-        await formatTelegramRights(
-          member
-        )
+        await formatTelegramRights(member)
       );
     } catch {
       return ctx.reply(
@@ -1177,9 +1224,7 @@ bot.hears(
       }
 
       return ctx.reply(
-        await formatTelegramRights(
-          member
-        )
+        await formatTelegramRights(member)
       );
     } catch {
       return ctx.reply(
@@ -1541,9 +1586,11 @@ bot.hears(
 
     let count = 0;
 
-    for (const [id, user] of Object.entries(
-      chat.users
-    )) {
+    for (
+      const [id, user] of Object.entries(
+        chat.users
+      )
+    ) {
       if (!user.muted) continue;
 
       try {
@@ -1568,12 +1615,7 @@ bot.hears(
 
         user.muted = false;
         count++;
-      } catch (e) {
-        console.error(
-          "UNMUTE:",
-          e.message
-        );
-      }
+      } catch {}
     }
 
     saveDB(db);
@@ -1788,6 +1830,8 @@ bot.hears(
 bot.hears(
   /^لقبه$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     if (!requireReply(ctx)) {
       return ctx.reply(
         "يجب الرد على العضو."
@@ -1821,6 +1865,8 @@ bot.hears(
 bot.hears(
   /^ضع (.+)$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     if (!requireReply(ctx)) {
       return ctx.reply(
         "يجب الرد على العضو."
@@ -1872,6 +1918,8 @@ bot.hears(
 bot.hears(
   /^منع الكلمه (.+)$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     const db = loadDB();
 
     if (
@@ -1917,6 +1965,8 @@ bot.hears(
 bot.hears(
   /^الغاء منع الكلمه (.+)$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     const db = loadDB();
 
     if (
@@ -1957,6 +2007,8 @@ bot.hears(
 bot.hears(
   /^الكلمات الممنوعه$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     const db = loadDB();
 
     if (
@@ -1996,6 +2048,8 @@ bot.hears(
 bot.hears(
   /^مسح الكلمات الممنوعه$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     const db = loadDB();
 
     if (
@@ -2688,18 +2742,14 @@ async function sendWhisperContent(
   ctx,
   whisper
 ) {
-  if (
-    whisper.type === "text"
-  ) {
+  if (whisper.type === "text") {
     await ctx.reply(
       `• الهمسة:\n${whisper.content}`
     );
     return;
   }
 
-  if (
-    whisper.type === "photo"
-  ) {
+  if (whisper.type === "photo") {
     await ctx.replyWithPhoto(
       whisper.content,
       {
@@ -2710,18 +2760,14 @@ async function sendWhisperContent(
     return;
   }
 
-  if (
-    whisper.type === "sticker"
-  ) {
+  if (whisper.type === "sticker") {
     await ctx.replyWithSticker(
       whisper.content
     );
     return;
   }
 
-  if (
-    whisper.type === "animation"
-  ) {
+  if (whisper.type === "animation") {
     await ctx.replyWithAnimation(
       whisper.content,
       {
@@ -2834,9 +2880,6 @@ bot.start(
       );
     }
 
-    /*
-     * المرسل يرسل محتوى الهمسة.
-     */
     if (
       userId === whisper.senderId
     ) {
@@ -2853,10 +2896,6 @@ bot.start(
       );
     }
 
-    /*
-     * المستقبل لا يرى الهمسة إلا عند
-     * الضغط على رؤية الهمسة.
-     */
     if (
       userId === whisper.receiverId
     ) {
@@ -2978,6 +3017,8 @@ bot.hears(
 bot.hears(
   /^انهاء احكام$/,
   async ctx => {
+    if (ctx.chat.type === "private") return;
+
     const db = loadDB();
 
     const chat =
@@ -3041,9 +3082,7 @@ bot.hears(
         ctx.chat.id
       );
 
-    chat.settings.gamesClosed =
-      true;
-
+    chat.settings.gamesClosed = true;
     chat.activeAhkam = null;
     chat.games = {};
 
@@ -3079,8 +3118,7 @@ bot.hears(
         ctx.chat.id
       );
 
-    chat.settings.gamesClosed =
-      false;
+    chat.settings.gamesClosed = false;
 
     saveDB(db);
 
@@ -3288,7 +3326,7 @@ bot.hears(
     }
 
     const gameName =
-      ctx.message.text;
+      ctx.message.text.trim();
 
     const questions = {
       "لغز": {
@@ -3309,6 +3347,11 @@ bot.hears(
       "كلمة": {
         q: "اذكر كلمة تبدأ بحرف م.",
         a: null
+      },
+
+      "مقال": {
+        q: "بدأت لعبة مقال. أرسل إجابتك.",
+        a: null
       }
     };
 
@@ -3322,7 +3365,8 @@ bot.hears(
     chat.games.active = {
       name: gameName,
       answer: game.a,
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      starterId: String(ctx.from.id)
     };
 
     saveDB(db);
@@ -3528,8 +3572,16 @@ bot.hears(
 
     list.forEach(
       (m, i) => {
+        const wife =
+          getChat(
+            db,
+            ctx.chat.id
+          ).users[m.wife];
+
         text +=
-          `${i + 1}. الزوجة: ${m.wife}\nالمهر: ${m.dowry} ريال\n`;
+          `${i + 1}. الزوجة: ${
+            wife?.firstName || m.wife
+          }\nالمهر: ${m.dowry} ريال\n`;
       }
     );
 
@@ -3566,13 +3618,24 @@ bot.hears(
       );
     }
 
+    const chat =
+      getChat(
+        db,
+        ctx.chat.id
+      );
+
     let text =
       "• توب المتزوجين\n━━━━━━━━━━━\n";
 
     list.forEach(
       (m, i) => {
+        const husband =
+          chat.users[m.husband];
+
         text +=
-          `${i + 1}. ${m.husband} ↤︎ ${m.dowry} ريال\n`;
+          `${i + 1}. ${
+            husband?.firstName || m.husband
+          } ↤︎ ${m.dowry} ريال\n`;
       }
     );
 
@@ -3676,9 +3739,6 @@ async function handleWhisperMedia(
 
   saveDB(db);
 
-  /*
-   * إشعار المستقبل فقط.
-   */
   try {
     const link =
       `https://t.me/${ctx.botInfo.username}?start=whisper_${whisper.id}`;
@@ -3698,12 +3758,7 @@ async function handleWhisperMedia(
         ]
       ])
     );
-  } catch (e) {
-    console.error(
-      "WHISPER NOTIFY:",
-      e.message
-    );
-  }
+  } catch {}
 
   return ctx.reply(
     "• تم ارسال الهمسة"
@@ -3891,9 +3946,6 @@ bot.on(
     const text =
       ctx.message.text;
 
-    /*
-     * الكلمات الممنوعة
-     */
     for (
       const word of
       chat.settings.bannedWords
@@ -3913,9 +3965,6 @@ bot.on(
       }
     }
 
-    /*
-     * الأحكام
-     */
     if (
       chat.activeAhkam?.active &&
       text === "أنا"
@@ -3940,9 +3989,6 @@ bot.on(
       }
     }
 
-    /*
-     * الألعاب
-     */
     if (
       chat.games?.active
     ) {
@@ -3998,9 +4044,6 @@ bot.on(
       }
     }
 
-    /*
-     * الأوامر المخصصة
-     */
     if (
       chat.customCommands[text]
     ) {
@@ -4009,9 +4052,6 @@ bot.on(
       );
     }
 
-    /*
-     * الردود المخصصة
-     */
     if (
       chat.customReplies[text]
     ) {
@@ -4313,7 +4353,12 @@ bot.hears(
         );
       }
 
-      return ctx.reply(
+      /*
+       * لأن رسالة الأمر حُذفت،
+       * نرسل الرد بدون Reply.
+       */
+      return ctx.telegram.sendMessage(
+        ctx.chat.id,
         "تم التنظيف بنجاح."
       );
     } catch {
@@ -4342,10 +4387,19 @@ bot.catch(
 ========================================================= */
 
 bot.launch()
-  .then(() => {
-    console.log(
-      "Bot started successfully."
-    );
+  .then(async () => {
+    try {
+      const me = await bot.telegram.getMe();
+      BOT_ID = me.id;
+
+      console.log(
+        `Bot started successfully: @${me.username}`
+      );
+    } catch {
+      console.log(
+        "Bot started successfully."
+      );
+    }
   })
   .catch(err => {
     console.error(
