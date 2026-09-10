@@ -1,12 +1,16 @@
 {
-  "name": "eve-bot",
+  "name": "eif-bot",
   "version": "1.0.0",
-  "description": "Telegram Bot",
-  "main": "index.js",
+  "main": "index.cjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.cjs"
   },
   "dependencies": {
-    "telegraf": "^4.15.3"
+    "telegraf": "^4.16.3",
+    "mongoose": "^8.18.0",
+    "yt-search": "^2.12.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
