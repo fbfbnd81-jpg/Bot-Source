@@ -60,11 +60,12 @@ function loadData() {
       );
     }
 
-    const raw =
-      fs.readFileSync(DATA_FILE, "utf8");
+    const raw = fs.readFileSync(
+      DATA_FILE,
+      "utf8"
+    );
 
-    const parsed =
-      JSON.parse(raw);
+    const parsed = JSON.parse(raw);
 
     return {
       ...DEFAULT_DATA,
@@ -252,14 +253,9 @@ function getUserLevel(userId) {
 }
 
 function getChatUser(ctx, userId) {
-  const group =
-    ensureGroup(ctx.chat.id);
-
-  const user =
-    ensureUser(userId);
-
-  const id =
-    String(userId);
+  const group = ensureGroup(ctx.chat.id);
+  const user = ensureUser(userId);
+  const id = String(userId);
 
   if (!group.users[id]) {
     group.users[id] = {
@@ -270,8 +266,7 @@ function getChatUser(ctx, userId) {
     };
   }
 
-  const saved =
-    group.users[id];
+  const saved = group.users[id];
 
   if (ctx.from?.id === userId) {
     saved.username =
@@ -286,13 +281,11 @@ function getChatUser(ctx, userId) {
   }
 
   if (user.username) {
-    saved.username =
-      user.username;
+    saved.username = user.username;
   }
 
   if (user.first_name) {
-    saved.first_name =
-      user.first_name;
+    saved.first_name = user.first_name;
   }
 
   return saved;
@@ -303,8 +296,7 @@ function getLevel(ctx, userId) {
     return 7;
   }
 
-  const user =
-    ensureUser(userId);
+  const user = ensureUser(userId);
 
   const globalLevel =
     Number(user.role || 0);
@@ -322,7 +314,7 @@ function getLevel(ctx, userId) {
 }
 
 /* =========================================================
-   HTML + المنشن
+   HTML + المنشن + اللقب
 ========================================================= */
 
 function escapeHtml(text = "") {
@@ -333,17 +325,38 @@ function escapeHtml(text = "") {
     .replace(/"/g, "&quot;");
 }
 
+/*
+  اللقب يظهر داخل التاق بجانب اسم المستخدم.
+  مثال:
+  إيلاف「المطور」
+*/
+
 function mention(user) {
   if (!user?.id) {
     return "المستخدم";
   }
 
+  const savedUser =
+    ensureUser(user.id);
+
   const name =
     user.first_name ||
     user.username ||
+    savedUser.first_name ||
+    savedUser.username ||
     "المستخدم";
 
-  return `<a href="tg://user?id=${user.id}">${escapeHtml(name)}</a>`;
+  const title =
+    savedUser.title ||
+    user.title ||
+    "";
+
+  const displayName =
+    title
+      ? `${name}「${title}」`
+      : name;
+
+  return `<a href="tg://user?id=${user.id}">${escapeHtml(displayName)}</a>`;
 }
 
 /* =========================================================
@@ -550,6 +563,74 @@ function addInteraction(ctx) {
 }
 
 /* =========================================================
+   تحديد نوع الرسالة فعليًا
+========================================================= */
+
+function getMessageType(message) {
+  if (!message) {
+    return "unknown";
+  }
+
+  if (message.text) {
+    return "text";
+  }
+
+  if (message.photo) {
+    return "photo";
+  }
+
+  if (message.video) {
+    return "video";
+  }
+
+  if (message.document) {
+    return "document";
+  }
+
+  if (message.sticker) {
+    return "sticker";
+  }
+
+  if (message.animation) {
+    return "animation";
+  }
+
+  if (message.audio) {
+    return "audio";
+  }
+
+  if (message.voice) {
+    return "voice";
+  }
+
+  if (message.video_note) {
+    return "video_note";
+  }
+
+  if (message.contact) {
+    return "contact";
+  }
+
+  if (message.location) {
+    return "location";
+  }
+
+  if (message.venue) {
+    return "venue";
+  }
+
+  if (message.poll) {
+    return "poll";
+  }
+
+  if (message.dice) {
+    return "dice";
+  }
+
+  return "unknown";
+}
+
+/* =========================================================
    تتبع الرسائل
 ========================================================= */
 
@@ -568,19 +649,81 @@ function trackMessage(ctx) {
   const msg =
     ctx.message;
 
+  const messageType =
+    getMessageType(msg);
+
+  const text =
+    msg.text ||
+    msg.caption ||
+    "";
+
+  const hasLink =
+    /(https?:\/\/|www\.|t\.me\/)/i.test(
+      text
+    );
+
   group.trackedMessages.push({
-    messageId: msg.message_id,
-    chatId: ctx.chat.id,
-    userId: ctx.from?.id || 0,
-    text: msg.text || "",
-    photo: !!msg.photo,
-    video: !!msg.video,
-    document: !!msg.document,
-    sticker: !!msg.sticker,
-    animation: !!msg.animation,
-    audio: !!msg.audio,
-    voice: !!msg.voice,
-    date: Date.now()
+    messageId:
+      msg.message_id,
+
+    chatId:
+      ctx.chat.id,
+
+    userId:
+      ctx.from?.id || 0,
+
+    type:
+      messageType,
+
+    text:
+      msg.text || "",
+
+    caption:
+      msg.caption || "",
+
+    hasLink,
+
+    photo:
+      messageType === "photo",
+
+    video:
+      messageType === "video",
+
+    document:
+      messageType === "document",
+
+    sticker:
+      messageType === "sticker",
+
+    animation:
+      messageType === "animation",
+
+    audio:
+      messageType === "audio",
+
+    voice:
+      messageType === "voice",
+
+    video_note:
+      messageType === "video_note",
+
+    contact:
+      messageType === "contact",
+
+    location:
+      messageType === "location",
+
+    venue:
+      messageType === "venue",
+
+    poll:
+      messageType === "poll",
+
+    dice:
+      messageType === "dice",
+
+    date:
+      Date.now()
   });
 
   if (
@@ -718,16 +861,33 @@ bot.on("message", async (ctx, next) => {
 
       if (
         group.autoClean &&
-        ctx.message?.text &&
-        /(https?:\/\/|www\.|t\.me\/)/i.test(
-          ctx.message.text
-        )
+        ctx.message
       ) {
-        try {
-          await ctx.deleteMessage();
-        } catch {}
+        const messageType =
+          getMessageType(
+            ctx.message
+          );
 
-        return;
+        const text =
+          ctx.message.text ||
+          ctx.message.caption ||
+          "";
+
+        const hasLink =
+          /(https?:\/\/|www\.|t\.me\/)/i.test(
+            text
+          );
+
+        if (
+          messageType === "text" &&
+          hasLink
+        ) {
+          try {
+            await ctx.deleteMessage();
+          } catch {}
+
+          return;
+        }
       }
     }
 
@@ -765,12 +925,17 @@ function createWhisperId() {
 }
 
 /* =========================================================
-   START
+   START + الهمسات
 ========================================================= */
 
 bot.start(async ctx => {
   const payload =
     ctx.startPayload || "";
+
+  /* -------------------------------------------------------
+     صاحب الهمسة هو من يضغط «اهمس هنا»
+     ثم يرسل محتوى الهمسة في الخاص
+  ------------------------------------------------------- */
 
   if (
     payload.startsWith("whisper_")
@@ -791,10 +956,10 @@ bot.start(async ctx => {
 
     if (
       ctx.from.id !==
-      pending.recipientId
+      pending.senderId
     ) {
       return ctx.reply(
-        "• هذه الهمسه ليست لك"
+        "• فقط صاحب الهمسة يقدر يكتبها"
       );
     }
 
@@ -802,7 +967,8 @@ bot.start(async ctx => {
       id,
       {
         ...pending,
-        createdAt: Date.now()
+        createdAt:
+          Date.now()
       }
     );
 
@@ -814,6 +980,10 @@ bot.start(async ctx => {
       "-"
     );
   }
+
+  /* -------------------------------------------------------
+     فتح الرد
+  ------------------------------------------------------- */
 
   if (
     payload.startsWith("whisperreply_")
@@ -847,8 +1017,10 @@ bot.start(async ctx => {
         originalId: id,
         senderId: ctx.from.id,
         sender: ctx.from,
-        recipientId: whisper.senderId,
-        chatId: whisper.chatId
+        recipientId:
+          whisper.senderId,
+        chatId:
+          whisper.chatId
       }
     );
 
@@ -928,12 +1100,16 @@ bot.hears(
     whisperPending.set(
       id,
       {
-        senderId: ctx.from.id,
+        senderId:
+          ctx.from.id,
 
         sender: {
-          id: ctx.from.id,
+          id:
+            ctx.from.id,
+
           first_name:
             ctx.from.first_name || "",
+
           username:
             ctx.from.username || ""
         },
@@ -942,9 +1118,12 @@ bot.hears(
           target.id,
 
         recipient: {
-          id: target.id,
+          id:
+            target.id,
+
           first_name:
             target.first_name || "",
+
           username:
             target.username || ""
         },
@@ -960,7 +1139,7 @@ bot.hears(
     return replyCommand(
       ctx,
       `• تم تحديد الهمسه لـ ↤ ${mention(target)}\n` +
-      `• اضغط الزر لكتابة الهمسة`,
+      `• اضغط «اهمس هنا» لكتابة الهمسة`,
       {
         ...Markup.inlineKeyboard([
           [
@@ -1108,9 +1287,12 @@ bot.on(
             ctx.from.id,
 
           sender: {
-            id: ctx.from.id,
+            id:
+              ctx.from.id,
+
             first_name:
               ctx.from.first_name || "",
+
             username:
               ctx.from.username || ""
           },
@@ -1121,6 +1303,7 @@ bot.on(
           recipient: {
             id:
               replyPending.recipientId,
+
             first_name: "",
             username: ""
           },
@@ -1174,7 +1357,7 @@ bot.on(
         ] of whisperStore.entries()
       ) {
         if (
-          item.recipientId ===
+          item.senderId ===
             ctx.from.id &&
           !item.content
         ) {
@@ -1237,7 +1420,7 @@ bot.on(
 
 /* =========================================================
    رؤية الهمسة
-   المحتوى يظهر للمستلم فقط في نافذة خاصة
+   المستلم فقط يقدر يشوفها
 ========================================================= */
 
 bot.action(
@@ -1283,21 +1466,11 @@ bot.action(
       whisper.content;
 
     try {
-      /* -------------------------
-         النص
-      ------------------------- */
-
       if (
         content.type === "text"
       ) {
         const text =
           `• الهمسة\n\n${content.text}`;
-
-        /*
-          show_alert يجعل النص يظهر
-          للمستلم الذي ضغط فقط.
-          لا يتم تعديل رسالة القروب.
-        */
 
         return ctx.answerCbQuery(
           text.slice(0, 195),
@@ -1306,12 +1479,6 @@ bot.action(
           }
         );
       }
-
-      /* -------------------------
-         الصور / الملصقات / القيف
-         لا يمكن عرض الوسائط داخل
-         callback alert.
-      ------------------------- */
 
       if (
         content.type === "photo"
@@ -1369,6 +1536,7 @@ bot.action(
 
 /* =========================================================
    الرد على الهمسة
+   المستلم فقط يقدر يرد
 ========================================================= */
 
 bot.action(
@@ -1688,7 +1856,7 @@ const promotionCommands = [
     required: 5
   },
   {
-    regex: /^رفع Myth 🎖️$/i,
+    regex: /^رفع Myth ?🎖️$/i,
     level: 5,
     name: "Myth🎖️",
     required: 6
@@ -1937,10 +2105,31 @@ async function checkBotPermission(
     permission &&
     member[permission] !== true
   ) {
+    const permissionNames = {
+      can_restrict_members:
+        "تقييد الأعضاء",
+
+      can_promote_members:
+        "إضافة المشرفين",
+
+      can_delete_messages:
+        "حذف الرسائل",
+
+      can_change_info:
+        "تغيير معلومات القروب",
+
+      can_invite_users:
+        "إضافة الأعضاء"
+    };
+
     return {
       ok: false,
       message:
-        `• البوت مشرف لكن ما عنده صلاحية ${permission}`
+        `• البوت مشرف لكن ما عنده صلاحية ${
+          permissionNames[permission] ||
+          permission
+        }\n` +
+        `• فعّل الصلاحية من إعدادات مشرفي القروب`
     };
   }
 
@@ -2846,28 +3035,34 @@ async function promoteMember(
   ctx,
   target
 ) {
-  const botMember =
-    await getBotMember(ctx);
+  /*
+    مهم:
+    البوت لا يستطيع إعطاء نفسه صلاحية
+    can_promote_members.
+    يجب أن تكون الصلاحية مفعلة للبوت
+    من إعدادات مشرفي القروب.
+  */
 
-  if (!botMember) {
+  const permission =
+    await checkBotPermission(
+      ctx,
+      "can_promote_members"
+    );
+
+  if (!permission.ok) {
     throw new Error(
-      "• تعذر معرفة صلاحيات البوت"
+      permission.message
     );
   }
+
+  const botMember =
+    permission.member;
 
   if (
     botMember.status !== "administrator"
   ) {
     throw new Error(
       "• البوت ليس مشرفًا في القروب"
-    );
-  }
-
-  if (
-    botMember.can_promote_members !== true
-  ) {
-    throw new Error(
-      "• البوت مشرف لكن ما عنده صلاحية إضافة المشرفين"
     );
   }
 
@@ -2941,7 +3136,7 @@ bot.hears(
         ctx,
         error?.message?.startsWith("•")
           ? error.message
-          : "• ما قدرت أرقّي المستخدم\n• تأكد أن البوت مشرف وعنده صلاحية إضافة المشرفين"
+          : "• ما قدرت أرقّي المستخدم\n• تأكد أن البوت مشرف وعنده صلاحية إضافة المشرفين من إعدادات مشرفي القروب"
       );
     }
 
@@ -2995,17 +3190,15 @@ bot.hears(
     }
 
     try {
-      const botMember =
-        await getBotMember(ctx);
+      const permission =
+        await checkBotPermission(
+          ctx,
+          "can_promote_members"
+        );
 
-      if (
-        !botMember ||
-        botMember.status !==
-          "administrator" ||
-        botMember.can_promote_members !== true
-      ) {
+      if (!permission.ok) {
         throw new Error(
-          "• البوت ما عنده صلاحية تعديل المشرفين"
+          permission.message
         );
       }
 
@@ -3339,6 +3532,19 @@ async function cleanMessages(
 
   let selected = [];
 
+  /*
+    0 = النصوص فقط
+    1 = الصور فقط
+    2 = الفيديو فقط
+    3 = الملفات فقط
+    4 = الملصقات فقط
+    5 = القيف فقط
+    6 = الصوتيات فقط
+    7 = التسجيلات الصوتية فقط
+    8 = الروابط فقط
+    9 = الوسائط فقط
+  */
+
   for (
     const msg of messages
   ) {
@@ -3349,49 +3555,87 @@ async function cleanMessages(
       continue;
     }
 
-    if (type === 0 && msg.text) {
+    const actualType =
+      msg.type ||
+      (
+        msg.photo ? "photo" :
+        msg.video ? "video" :
+        msg.document ? "document" :
+        msg.sticker ? "sticker" :
+        msg.animation ? "animation" :
+        msg.audio ? "audio" :
+        msg.voice ? "voice" :
+        msg.text ? "text" :
+        "unknown"
+      );
+
+    if (
+      type === 0 &&
+      actualType === "text"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 1 && msg.photo) {
+    if (
+      type === 1 &&
+      actualType === "photo"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 2 && msg.video) {
+    if (
+      type === 2 &&
+      actualType === "video"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 3 && msg.document) {
+    if (
+      type === 3 &&
+      actualType === "document"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 4 && msg.sticker) {
+    if (
+      type === 4 &&
+      actualType === "sticker"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 5 && msg.animation) {
+    if (
+      type === 5 &&
+      actualType === "animation"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 6 && msg.audio) {
+    if (
+      type === 6 &&
+      actualType === "audio"
+    ) {
       selected.push(
         msg.messageId
       );
     }
 
-    if (type === 7 && msg.voice) {
+    if (
+      type === 7 &&
+      actualType === "voice"
+    ) {
       selected.push(
         msg.messageId
       );
@@ -3399,10 +3643,7 @@ async function cleanMessages(
 
     if (
       type === 8 &&
-      msg.text &&
-      /(https?:\/\/|www\.|t\.me\/)/i.test(
-        msg.text
-      )
+      msg.hasLink === true
     ) {
       selected.push(
         msg.messageId
@@ -3411,15 +3652,16 @@ async function cleanMessages(
 
     if (
       type === 9 &&
-      (
-        msg.photo ||
-        msg.video ||
-        msg.document ||
-        msg.sticker ||
-        msg.animation ||
-        msg.audio ||
-        msg.voice
-      )
+      [
+        "photo",
+        "video",
+        "document",
+        "sticker",
+        "animation",
+        "audio",
+        "voice",
+        "video_note"
+      ].includes(actualType)
     ) {
       selected.push(
         msg.messageId
