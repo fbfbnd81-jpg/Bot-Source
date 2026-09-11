@@ -1332,4 +1332,4 @@ bot.hears(
 
     await reply(
       ctx,
-      `• المكتومين عام:\n\n${lines.join("\n")
+      `• المكتومين عام:\n\n${lines.join("\n")}
