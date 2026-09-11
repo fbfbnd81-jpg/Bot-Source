@@ -2,112 +2,64 @@ const { Telegraf, Markup } = require("telegraf");
 const fs = require("fs");
 const path = require("path");
 
-/* =========================================================
-   CONFIG
-========================================================= */
-
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
 if (!BOT_TOKEN) {
-  throw new Error("BOT_TOKEN غير موجود في Secrets");
+  throw new Error("BOT_TOKEN غير موجود في متغيرات البيئة");
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
-const OWNER_USERNAME = "j4xa7";
-const DATA_FILE = path.join(__dirname, "data.json");
+const DATA_DIR = path.join(__dirname, "data");
+const DATA_FILE = path.join(DATA_DIR, "data.json");
 
-/* =========================================================
-   ROLES
-========================================================= */
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
-const ROLES = {
-  MEMBER: {
-    key: "MEMBER",
-    name: "عضو",
-    level: 0
-  },
-  VIP: {
-    key: "VIP",
-    name: "مميز",
-    level: 1
-  },
-  OWNER: {
-    key: "OWNER",
-    name: "مالك",
-    level: 2
-  },
-  MAIN_OWNER: {
-    key: "MAIN_OWNER",
-    name: "مالك أساسي",
-    level: 3
-  },
-  MYTH: {
-    key: "MYTH",
-    name: "Myth",
-    level: 4
-  },
-  MYTH2: {
-    key: "MYTH2",
-    name: "Myth 🎖️",
-    level: 5
-  },
-  DEV2: {
-    key: "DEV2",
-    name: "Dev²🎖️",
-    level: 6
-  },
-  DEV: {
-    key: "DEV",
-    name: "Dev🎖️",
-    level: 7
-  }
-};
-
-/* =========================================================
-   DATA
-========================================================= */
-
-let data = {
-  users: {},
+const DEFAULT_DATA = {
+  roles: {},
+  stats: {},
   chats: {},
+  whispers: {},
+  pendingWhispers: {},
+  pendingReplies: {},
   customCommands: {},
   customReplies: {},
-  whispers: {},
-  nextWhisperId: 1,
-  ownerProfile: {
-    username: "j4xa7"
-  }
+  settings: {},
+  warnings: {},
+  muted: {},
+  globalMuted: {},
+  activeGames: {},
+  money: {}
 };
 
 function loadData() {
   try {
     if (!fs.existsSync(DATA_FILE)) {
-      saveData();
-      return;
+      fs.writeFileSync(
+        DATA_FILE,
+        JSON.stringify(DEFAULT_DATA, null, 2),
+        "utf8"
+      );
+      return JSON.parse(JSON.stringify(DEFAULT_DATA));
     }
 
-    const saved = JSON.parse(
-      fs.readFileSync(DATA_FILE, "utf8")
-    );
+    const raw = fs.readFileSync(DATA_FILE, "utf8");
+    const parsed = JSON.parse(raw);
 
-    data = {
-      ...data,
-      ...saved,
-      users: saved.users || {},
-      chats: saved.chats || {},
-      customCommands: saved.customCommands || {},
-      customReplies: saved.customReplies || {},
-      whispers: saved.whispers || {},
-      ownerProfile: saved.ownerProfile || {
-        username: OWNER_USERNAME
-      }
+    return {
+      ...JSON.parse(JSON.stringify(DEFAULT_DATA)),
+      ...parsed
     };
   } catch (err) {
-    console.error("DATA LOAD ERROR:", err);
+    console.error("خطأ قراءة البيانات:", err);
+    return JSON.parse(JSON.stringify(DEFAULT_DATA));
   }
 }
+
+let data = loadData();
 
 function saveData() {
   try {
@@ -117,102 +69,91 @@ function saveData() {
       "utf8"
     );
   } catch (err) {
-    console.error("DATA SAVE ERROR:", err);
+    console.error("خطأ حفظ البيانات:", err);
   }
 }
 
-loadData();
+const ROLES = {
+  "عضو": 0,
+  "مميز": 1,
+  "مالك": 2,
+  "مالك أساسي": 3,
+  "Myth": 4,
+  "Myth 🎖️": 5,
+  "Dev²🎖️": 6,
+  "Dev🎖️": 7
+};
 
-/* =========================================================
-   BASIC
-========================================================= */
+const ROLE_NAMES = [
+  "عضو",
+  "مميز",
+  "مالك",
+  "مالك أساسي",
+  "Myth",
+  "Myth 🎖️",
+  "Dev²🎖️",
+  "Dev🎖️"
+];
+
+const DEV_USERNAME = "j4xa7";
+
+function ensureUser(user) {
+  if (!user) return;
+
+  const id = String(user.id);
+
+  if (!data.roles[id]) {
+    data.roles[id] = {
+      role: "عضو",
+      username: user.username || "",
+      firstName: user.first_name || "مستخدم"
+    };
+  }
+
+  data.roles[id].username =
+    user.username || data.roles[id].username || "";
+
+  data.roles[id].firstName =
+    user.first_name ||
+    data.roles[id].firstName ||
+    "مستخدم";
+
+  if (
+    (user.username || "").toLowerCase() ===
+    DEV_USERNAME.toLowerCase()
+  ) {
+    data.roles[id].role = "Dev🎖️";
+  }
+}
+
+function getRole(userId, username = "") {
+  if (
+    String(username || "").toLowerCase() ===
+    DEV_USERNAME.toLowerCase()
+  ) {
+    return "Dev🎖️";
+  }
+
+  const role = data.roles[String(userId)];
+
+  if (!role) return "عضو";
+
+  return role.role || "عضو";
+}
+
+function getLevel(userId, username = "") {
+  return ROLES[getRole(userId, username)] ?? 0;
+}
+
+function roleName(userId, username = "") {
+  return getRole(userId, username);
+}
 
 function isGroup(ctx) {
   return (
     ctx.chat &&
-    (ctx.chat.type === "group" ||
-      ctx.chat.type === "supergroup")
+    ["group", "supergroup"].includes(ctx.chat.type)
   );
-}
-
-function userId(ctx) {
-  return String(ctx.from?.id || "");
-}
-
-function username(ctx) {
-  return String(ctx.from?.username || "");
-}
-
-function isDev(ctx) {
-  return (
-    username(ctx).toLowerCase() ===
-    OWNER_USERNAME.toLowerCase()
-  );
-}
-
-function ensureUser(ctx) {
-  const id = userId(ctx);
-
-  if (!id) return null;
-
-  if (!data.users[id]) {
-    data.users[id] = {
-      id,
-      username: username(ctx),
-      firstName: ctx.from?.first_name || "",
-      role: "MEMBER",
-      messages: 0
-    };
-  }
-
-  data.users[id].username =
-    username(ctx) || data.users[id].username;
-
-  data.users[id].firstName =
-    ctx.from?.first_name ||
-    data.users[id].firstName;
-
-  if (
-    String(data.users[id].username).toLowerCase() ===
-    OWNER_USERNAME.toLowerCase()
-  ) {
-    data.users[id].role = "DEV";
-  }
-
-  saveData();
-
-  return data.users[id];
-}
-
-function roleOfUser(id) {
-  const user = data.users[String(id)];
-
-  if (!user) return ROLES.MEMBER;
-
-  if (
-    String(user.username || "").toLowerCase() ===
-    OWNER_USERNAME.toLowerCase()
-  ) {
-    return ROLES.DEV;
-  }
-
-  return ROLES[user.role] || ROLES.MEMBER;
-}
-
-function roleOf(ctx) {
-  const user = ensureUser(ctx);
-
-  if (!user) return ROLES.MEMBER;
-
-  if (isDev(ctx)) {
-    return ROLES.DEV;
-  }
-
-  return ROLES[user.role] || ROLES.MEMBER;
-}
-
-function hasLevel(ctx, level) {
-  return roleOf(ctx).level >= level;
 }
 
 function ensureChat(ctx) {
@@ -221,34 +162,64 @@ function ensureChat(ctx) {
   if (!data.chats[id]) {
     data.chats[id] = {
       violations: true,
-      protection: true,
-      messages: [],
-      editedMessages: [],
-      muted: {},
-      globalMuted: {},
-      admins: {}
+      botReplies: true,
+      bank: true,
+      communication: true,
+      forcedSubscription: false,
+      serviceBot: false,
+      stats: true,
+      zagel: false,
+      formats: true
     };
   }
 
-  const chat = data.chats[id];
-
-  chat.messages ||= [];
-  chat.editedMessages ||= [];
-  chat.muted ||= {};
-  chat.globalMuted ||= {};
-  chat.admins ||= {};
-
-  return chat;
+  return data.chats[id];
 }
 
-/* =========================================================
-   MARKDOWN / MENTIONS
-========================================================= */
+function ensureStats(ctx, user = ctx.from) {
+  if (!user) return;
 
-function escapeMarkdown(text) {
-  return String(text || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/([_*[\]()~`>#+\-=|{}.!])/g, "\\$1");
+  const chatId = String(ctx.chat.id);
+
+  if (!data.stats[chatId]) {
+    data.stats[chatId] = {};
+  }
+
+  const userId = String(user.id);
+
+  if (!data.stats[chatId][userId]) {
+    data.stats[chatId][userId] = {
+      id: user.id,
+      username: user.username || "",
+      firstName: user.first_name || "مستخدم",
+      messages: 0
+    };
+  }
+
+  data.stats[chatId][userId].username =
+    user.username ||
+    data.stats[chatId][userId].username ||
+    "";
+
+  data.stats[chatId][userId].firstName =
+    user.first_name ||
+    data.stats[chatId][userId].firstName ||
+    "مستخدم";
+}
+
+function addMessageStat(ctx) {
+  if (!isGroup(ctx)) return;
+
+  const chat = ensureChat(ctx);
+
+  if (chat.stats === false) return;
+
+  ensureStats(ctx);
+
+  const chatId = String(ctx.chat.id);
+  const userId = String(ctx.from.id);
+
+  data.stats[chatId][userId].messages++;
 }
 
 function mention(user) {
@@ -260,233 +231,392 @@ function mention(user) {
     user.username ||
     "المستخدم";
 
-  return `[${escapeMarkdown(name)}](tg://user?id=${user.id})`;
+  return `[${escapeMarkdown(String(name))}](tg://user?id=${user.id})`;
 }
 
-function mentionCtx(ctx) {
-  return mention({
-    id: ctx.from.id,
-    first_name: ctx.from.first_name,
-    username: ctx.from.username
-  });
+function escapeMarkdown(text) {
+  return String(text).replace(
+    /([_*\[\]()~`>#+\-=|{}.!\\])/g,
+    "\\$1"
+  );
 }
-
-/* =========================================================
-   REPLY SYSTEM
-========================================================= */
 
 async function reply(ctx, text, extra = {}) {
-  return ctx.reply(text, {
-    reply_to_message_id: ctx.message?.message_id,
-    ...extra
-  });
-}
-
-/* =========================================================
-   MESSAGE TRACKING
-========================================================= */
-
-function messageType(message) {
-  if (message.photo) return "photo";
-  if (message.video) return "video";
-  if (message.animation) return "gif";
-  if (message.sticker) return "sticker";
-  if (message.voice) return "voice";
-  if (message.audio) return "audio";
-  if (message.video_note) return "video_note";
-  if (message.document) return "document";
-  if (message.text) return "text";
-  return "other";
-}
-
-function trackMessage(ctx) {
-  if (!isGroup(ctx) || !ctx.message) return;
-
-  const chat = ensureChat(ctx);
-
-  const m = ctx.message;
-
-  chat.messages.push({
-    id: m.message_id,
-    userId: String(m.from?.id || ""),
-    type: messageType(m),
-    bot: Boolean(m.from?.is_bot),
-    date: Date.now()
-  });
-
-  if (chat.messages.length > 5000) {
-    chat.messages =
-      chat.messages.slice(-5000);
-  }
-
-  const user = ensureUser(ctx);
-
-  if (user && !m.from?.is_bot) {
-    user.messages =
-      Number(user.messages || 0) + 1;
-  }
-
-  saveData();
-}
-
-function trackEdited(ctx) {
-  if (!isGroup(ctx) || !ctx.editedMessage) return;
-
-  const chat = ensureChat(ctx);
-
-  chat.editedMessages.push({
-    id: ctx.editedMessage.message_id,
-    userId: String(
-      ctx.editedMessage.from?.id || ""
-    ),
-    date: Date.now()
-  });
-
-  if (chat.editedMessages.length > 3000) {
-    chat.editedMessages =
-      chat.editedMessages.slice(-3000);
-  }
-
-  saveData();
-}
-
-/* =========================================================
-   TARGET
-========================================================= */
-
-function getArgs(ctx) {
-  return String(ctx.message?.text || "")
-    .trim()
-    .split(/\s+/)
-    .slice(1);
-}
-
-function getTargetFromReply(ctx) {
-  return ctx.message?.reply_to_message?.from || null;
-}
-
-function findSavedUserByUsername(value) {
-  const clean = String(value || "")
-    .replace("@", "")
-    .toLowerCase();
-
-  return Object.values(data.users).find(
-    user =>
-      String(user.username || "").toLowerCase() ===
-      clean
-  );
-}
-
-function getTarget(ctx) {
-  const replyUser =
-    getTargetFromReply(ctx);
-
-  if (replyUser) {
-    return replyUser;
-  }
-
-  const args = getArgs(ctx);
-
-  if (!args.length) return null;
-
-  const saved =
-    findSavedUserByUsername(args[0]);
-
-  if (!saved) return null;
-
-  return {
-    id: Number(saved.id),
-    username: saved.username,
-    first_name: saved.firstName
-  };
-}
-
-/* =========================================================
-   HIERARCHY
-========================================================= */
-
-function canActOn(ctx, targetId) {
-  if (isDev(ctx)) return true;
-
-  return (
-    roleOf(ctx).level >
-    roleOfUser(targetId).level
-  );
-}
-
-function ownerRequired(ctx) {
-  if (!hasLevel(ctx, ROLES.OWNER.level)) {
-    return false;
-  }
-
-  return true;
-}
-
-/* =========================================================
-   BOT ADMIN
-========================================================= */
-
-async function botIsAdmin(ctx) {
   try {
-    const me =
-      await ctx.telegram.getMe();
+    return await ctx.reply(text, {
+      reply_to_message_id:
+        ctx.message?.message_id,
+      ...extra
+    });
+  } catch (err) {
+    try {
+      return await ctx.reply(
+        String(text).replace(/\\/g, ""),
+        {
+          reply_to_message_id:
+            ctx.message?.message_id
+        }
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
 
+function targetFromMessage(ctx) {
+  if (!ctx.message?.reply_to_message?.from) {
+    return null;
+  }
+
+  return ctx.message.reply_to_message.from;
+}
+
+function targetFromReplyOrMention(ctx) {
+  const target = targetFromMessage(ctx);
+
+  if (target) return target;
+
+  const entities =
+    ctx.message?.entities ||
+    [];
+
+  const text = ctx.message?.text || "";
+
+  for (const entity of entities) {
+    if (entity.type === "text_mention") {
+      return entity.user;
+    }
+  }
+
+  const usernameMatch = text.match(
+    /@([A-Za-z0-9_]{5,32})/
+  );
+
+  if (usernameMatch) {
+    return {
+      id: null,
+      username: usernameMatch[1],
+      first_name: usernameMatch[1]
+    };
+  }
+
+  return null;
+}
+
+async function resolveTarget(ctx) {
+  const target = targetFromReplyOrMention(ctx);
+
+  if (!target) return null;
+
+  if (target.id) return target;
+
+  if (target.username) {
+    try {
+      const member =
+        await ctx.telegram.getChatMember(
+          ctx.chat.id,
+          `@${target.username}`
+        );
+
+      if (member?.user) return member.user;
+    } catch (_) {}
+  }
+
+  return target;
+}
+
+function canActOn(ctx, target) {
+  if (!target?.id) return false;
+
+  const actorLevel = getLevel(
+    ctx.from.id,
+    ctx.from.username
+  );
+
+  const targetLevel = getLevel(
+    target.id,
+    target.username
+  );
+
+  return actorLevel > targetLevel;
+}
+
+function requireLevel(ctx, level) {
+  const current = getLevel(
+    ctx.from.id,
+    ctx.from.username
+  );
+
+  if (current < level) {
+    return reply(
+      ctx,
+      "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+    ).then(() => false);
+  }
+
+  return Promise.resolve(true);
+}
+
+function getMuteStore(chatId) {
+  const id = String(chatId);
+
+  if (!data.muted[id]) {
+    data.muted[id] = {};
+  }
+
+  return data.muted[id];
+}
+
+function getGlobalMuteStore() {
+  if (!data.globalMuted) {
+    data.globalMuted = {};
+  }
+
+  return data.globalMuted;
+}
+
+async function isAdmin(ctx, userId) {
+  try {
     const member =
       await ctx.telegram.getChatMember(
         ctx.chat.id,
-        me.id
+        userId
+      );
+
+    return (
+      member.status === "creator" ||
+      member.status === "administrator"
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+async function botIsAdmin(ctx) {
+  try {
+    const member =
+      await ctx.telegram.getChatMember(
+        ctx.chat.id,
+        ctx.botInfo.id
       );
 
     return (
       member.status === "administrator" ||
       member.status === "creator"
     );
-  } catch {
+  } catch (_) {
     return false;
   }
 }
 
-/* =========================================================
-   PROTECTION
-   يعمل قبل الأوامر
-========================================================= */
-
-function hasLink(text) {
-  return /(https?:\/\/|www\.|t\.me\/|telegram\.me\/)/i
-    .test(text || "");
+async function restrictUser(ctx, userId, untilDate = 0) {
+  return ctx.telegram.restrictChatMember(
+    ctx.chat.id,
+    userId,
+    {
+      permissions: {
+        can_send_messages: false,
+        can_send_audios: false,
+        can_send_documents: false,
+        can_send_photos: false,
+        can_send_videos: false,
+        can_send_video_notes: false,
+        can_send_voice_notes: false,
+        can_send_polls: false,
+        can_send_other_messages: false,
+        can_add_web_page_previews: false
+      },
+      until_date: untilDate
+    }
+  );
 }
 
-async function runProtection(ctx) {
+async function unrestrictUser(ctx, userId) {
+  return ctx.telegram.restrictChatMember(
+    ctx.chat.id,
+    userId,
+    {
+      permissions: {
+        can_send_messages: true,
+        can_send_audios: true,
+        can_send_documents: true,
+        can_send_photos: true,
+        can_send_videos: true,
+        can_send_video_notes: true,
+        can_send_voice_notes: true,
+        can_send_polls: true,
+        can_send_other_messages: true,
+        can_add_web_page_previews: true
+      }
+    }
+  );
+}
+
+async function banUser(ctx, userId) {
+  return ctx.telegram.banChatMember(
+    ctx.chat.id,
+    userId
+  );
+}
+
+async function unbanUser(ctx, userId) {
+  return ctx.telegram.unbanChatMember(
+    ctx.chat.id,
+    userId,
+    {
+      only_if_banned: true
+    }
+  );
+}
+
+async function kickUser(ctx, userId) {
+  await ctx.telegram.banChatMember(
+    ctx.chat.id,
+    userId
+  );
+
+  await ctx.telegram.unbanChatMember(
+    ctx.chat.id,
+    userId,
+    {
+      only_if_banned: true
+    }
+  );
+}
+
+function saveUserInMuteStore(store, user) {
+  store[String(user.id)] = {
+    id: user.id,
+    username: user.username || "",
+    firstName:
+      user.first_name ||
+      user.firstName ||
+      "مستخدم",
+    createdAt: Date.now()
+  };
+}
+
+function deleteFromMuteStore(store, userId) {
+  delete store[String(userId)];
+}
+
+function getCommandText(ctx) {
+  return (
+    ctx.message?.text ||
+    ctx.message?.caption ||
+    ""
+  ).trim();
+}
+
+function commandArgs(ctx) {
+  return getCommandText(ctx)
+    .split(/\s+/)
+    .slice(1);
+}
+
+function commandName(ctx) {
+  const text = getCommandText(ctx);
+
+  if (!text.startsWith("/")) return "";
+
+  return text
+    .split(/\s+/)[0]
+    .split("@")[0]
+    .toLowerCase();
+}
+
+function isTextMessage(ctx) {
+  return Boolean(ctx.message?.text);
+}
+
+function containsLink(text) {
+  return /https?:\/\/|www\.|t\.me\/|telegram\.me\//i.test(
+    text || ""
+  );
+}
+
+function getCustomKey(text) {
+  return String(text || "")
+    .trim()
+    .toLowerCase();
+}
+
+async function deleteMessageSafe(ctx) {
+  try {
+    await ctx.deleteMessage();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function handleViolations(ctx) {
   if (!isGroup(ctx)) return false;
+  if (!ctx.message) return false;
 
   const chat = ensureChat(ctx);
 
-  if (!chat.protection) return false;
   if (!chat.violations) return false;
-
-  if (!ctx.message) return false;
-
-  const user = ensureUser(ctx);
-
-  if (!user) return false;
-
-  if (roleOf(ctx).level >= ROLES.VIP.level) {
-    return false;
-  }
 
   const text =
     ctx.message.text ||
     ctx.message.caption ||
     "";
 
-  if (hasLink(text)) {
-    try {
-      await ctx.telegram.deleteMessage(
-        ctx.chat.id,
-        ctx.message.message_id
-      );
-    } catch {}
+  if (!text) return false;
 
+  if (
+    containsLink(text) &&
+    getLevel(
+      ctx.from.id,
+      ctx.from.username
+    ) < ROLES["مميز"]
+  ) {
+    await deleteMessageSafe(ctx);
+
+    const key = String(ctx.chat.id);
+
+    if (!data.warnings[key]) {
+      data.warnings[key] = {};
+    }
+
+    const uid = String(ctx.from.id);
+
+    data.warnings[key][uid] =
+      (data.warnings[key][uid] || 0) + 1;
+
+    const count =
+      data.warnings[key][uid];
+
+    if (count >= 3) {
+      try {
+        await restrictUser(
+          ctx,
+          ctx.from.id
+        );
+
+        saveUserInMuteStore(
+          getMuteStore(ctx.chat.id),
+          ctx.from
+        );
+      } catch (_) {}
+
+      data.warnings[key][uid] = 0;
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(ctx.from)}」
+• تم كتمه بسبب المخالفات`
+      );
+    } else {
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(ctx.from)}」
+• مخالفة رقم ${count} من 3`
+      );
+    }
+
+    saveData();
     return true;
   }
 
@@ -494,111 +624,82 @@ async function runProtection(ctx) {
 }
 
 /* =========================================================
-   GLOBAL MIDDLEWARE
-========================================================= */
-
-bot.use(async (ctx, next) => {
-  try {
-    if (ctx.message) {
-      ensureUser(ctx);
-
-      if (isGroup(ctx)) {
-        const blocked =
-          await runProtection(ctx);
-
-        if (blocked) return;
-
-        trackMessage(ctx);
-      }
-    }
-
-    await next();
-  } catch (err) {
-    console.error("MIDDLEWARE:", err);
-  }
-});
-
-bot.on("edited_message", async ctx => {
-  try {
-    trackEdited(ctx);
-
-    if (!isGroup(ctx)) return;
-
-    const chat = ensureChat(ctx);
-
-    if (!chat.protection) return;
-    if (!chat.violations) return;
-
-    const text =
-      ctx.editedMessage?.text ||
-      ctx.editedMessage?.caption ||
-      "";
-
-    if (
-      hasLink(text) &&
-      roleOfUser(
-        ctx.editedMessage?.from?.id
-      ).level < ROLES.VIP.level
-    ) {
-      try {
-        await ctx.telegram.deleteMessage(
-          ctx.chat.id,
-          ctx.editedMessage.message_id
-        );
-      } catch {}
-    }
-  } catch (err) {
-    console.error("EDITED:", err);
-  }
-});
-
-/* =========================================================
    START
 ========================================================= */
 
 bot.start(async ctx => {
-  ensureUser(ctx);
+  const payload =
+    ctx.startPayload || "";
 
-  if (ctx.chat.type !== "private") {
-    return reply(
-      ctx,
-      "• استخدم /start في الخاص"
+  ensureUser(ctx.from);
+
+  if (payload.startsWith("whisper_")) {
+    const id = payload.replace(
+      "whisper_",
+      ""
+    );
+
+    const whisper =
+      data.whispers[id];
+
+    if (!whisper) {
+      return ctx.reply(
+        "• الهمسه غير موجوده أو انتهت"
+      );
+    }
+
+    const buttons = [];
+
+    if (whisper.type === "text") {
+      buttons.push([
+        Markup.button.callback(
+          "رؤية الهمسه",
+          `see_whisper_${id}`
+        )
+      ]);
+    } else {
+      buttons.push([
+        Markup.button.callback(
+          "رؤية الهمسه",
+          `see_whisper_${id}`
+        )
+      ]);
+    }
+
+    buttons.push([
+      Markup.button.callback(
+        "رد على الهمسه",
+        `reply_whisper_${id}`
+      )
+    ]);
+
+    return ctx.reply(
+      "• وصلت لك همسه جديدة",
+      Markup.inlineKeyboard(buttons)
     );
   }
 
-  const me =
-    await ctx.telegram.getMe();
+  return ctx.reply(
+    `أهلا بك يا قلبي ${mention(ctx.from)}
 
-  const addUrl =
-    `https://t.me/${me.username}?startgroup=true`;
+• بوت متخصص للمجموعات
+• إدارة وحماية وترفيه
+• همسات وألعاب وإحصائيات
 
-  const developerUrl =
-    `tg://user?id=${ctx.from.id}`;
-
-  await ctx.reply(
-    `أهلا بك يا قلبي ${mentionCtx(ctx)} 🤍
-
-🎵 أقدر أشغل لك الأغاني بالمكالمة الصوتية.
-
-المنصات:
-• YouTube
-• Spotify
-• Resso
-• Apple Music
-• SoundCloud`,
+• يمكن استخدامه لإدارة مجموعتك وتنظيمها`,
     {
       parse_mode: "MarkdownV2",
       ...Markup.inlineKeyboard([
         [
           Markup.button.url(
             "أضفني إلى مجموعتك",
-            addUrl
+            `https://t.me/${ctx.botInfo.username}?startgroup=true`
           )
         ],
         [
           Markup.button.url(
             "المطور",
-            developerUrl
+            "https://t.me/j4xa7"
           )
         ]
       ])
@@ -607,99 +708,133 @@ bot.start(async ctx => {
 });
 
 /* =========================================================
-   رتبتي
+   MESSAGE STATS + PROTECTION
+========================================================= */
+
+bot.on("message", async ctx => {
+  ensureUser(ctx.from);
+
+  if (isGroup(ctx)) {
+    addMessageStat(ctx);
+
+    if (await handleViolations(ctx)) {
+      saveData();
+      return;
+    }
+
+    const store =
+      getGlobalMuteStore();
+
+    if (
+      store[String(ctx.from.id)] &&
+      !(
+        ctx.message?.text &&
+        /^فك الكتم العام$/i.test(
+          ctx.message.text.trim()
+        )
+      )
+    ) {
+      try {
+        await deleteMessageSafe(ctx);
+      } catch (_) {}
+    }
+  }
+
+  saveData();
+});
+
+/* =========================================================
+   RANK
 ========================================================= */
 
 bot.hears(
   /^رتبتي$/i,
   async ctx => {
-    const role = roleOf(ctx);
+    ensureUser(ctx.from);
 
     await reply(
       ctx,
-      `• رتبتك ↤︎ ${role.name}`
+      `• رتبتك ↤︎ ${roleName(
+        ctx.from.id,
+        ctx.from.username
+      )}`
     );
   }
 );
-
-/* =========================================================
-   تفاعلي
-========================================================= */
 
 bot.hears(
   /^تفاعلي$/i,
   async ctx => {
-    const user = ensureUser(ctx);
+    if (!isGroup(ctx)) return;
 
-    const list =
-      Object.values(data.users)
-        .filter(
-          u =>
-            Number(u.messages || 0) > 0
-        )
-        .sort(
-          (a, b) =>
-            Number(b.messages || 0) -
-            Number(a.messages || 0)
-        );
+    ensureStats(ctx);
+
+    const chatId = String(ctx.chat.id);
+    const userId = String(ctx.from.id);
+
+    const users = Object.values(
+      data.stats[chatId] || {}
+    ).sort(
+      (a, b) =>
+        (b.messages || 0) -
+        (a.messages || 0)
+    );
 
     const index =
-      list.findIndex(
-        u =>
-          String(u.id) ===
-          String(user.id)
+      users.findIndex(
+        u => String(u.id) === userId
       );
 
-    const rank =
-      index === -1
-        ? 0
-        : index + 1;
+    const count =
+      data.stats[chatId]?.[userId]
+        ?.messages || 0;
 
     await reply(
       ctx,
-      `• رتبتك ↤︎ ${roleOf(ctx).name}
-• عدد رسائل التفاعل ↤︎ ${user.messages || 0}
-• ترتيبك بين المتفاعلين ↤︎ ${rank}`
+      `• رتبتك ↤︎ ${roleName(
+        ctx.from.id,
+        ctx.from.username
+      )}
+• عدد رسائل التفاعل ↤︎ ${count}
+• ترتيبك بين المتفاعلين ↤︎ ${
+        index === -1 ? 0 : index + 1
+      }`
     );
   }
 );
 
-/* =========================================================
-   المتفاعلين
-========================================================= */
-
 bot.hears(
   /^المتفاعلين$/i,
   async ctx => {
-    const list =
-      Object.values(data.users)
-        .filter(
-          u =>
-            Number(u.messages || 0) > 0
-        )
-        .sort(
-          (a, b) =>
-            Number(b.messages || 0) -
-            Number(a.messages || 0)
-        )
-        .slice(0, 50);
+    if (!isGroup(ctx)) return;
 
-    if (!list.length) {
+    const chatId = String(ctx.chat.id);
+
+    const users = Object.values(
+      data.stats[chatId] || {}
+    )
+      .sort(
+        (a, b) =>
+          (b.messages || 0) -
+          (a.messages || 0)
+      )
+      .slice(0, 20);
+
+    if (!users.length) {
       return reply(
         ctx,
         "• لا يوجد متفاعلين"
       );
     }
 
-    const lines =
-      list.map(
-        (u, i) =>
-          `${i + 1}\\. ${mention({
-            id: u.id,
-            first_name: u.firstName,
-            username: u.username
-          })} ↤︎ ${u.messages || 0}`
-      );
+    const lines = users.map(
+      (u, i) =>
+        `${i + 1}. ${mention({
+          id: u.id,
+          first_name: u.firstName,
+          username: u.username
+        })} ↤︎ ${u.messages || 0}`
+    );
 
     await reply(
       ctx,
@@ -712,52 +847,288 @@ bot.hears(
 );
 
 /* =========================================================
-   فتح / غلق المخالفات
+   RANK MANAGEMENT
 ========================================================= */
 
+async function promoteCommand(
+  ctx,
+  newRole
+) {
+  if (!isGroup(ctx)) return;
+
+  if (
+    !(await requireLevel(
+      ctx,
+      ROLES["مالك"]
+    ))
+  ) {
+    return;
+  }
+
+  const target =
+    await resolveTarget(ctx);
+
+  if (!target?.id) {
+    return reply(
+      ctx,
+      "• رد على الشخص أو منشنه"
+    );
+  }
+
+  if (!canActOn(ctx, target)) {
+    return reply(
+      ctx,
+      "• لا يمكن رفع رتبه نفس رتبتك ولا اعلى من رتبتك"
+    );
+  }
+
+  ensureUser(target);
+
+  data.roles[String(target.id)] = {
+    role: newRole,
+    username: target.username || "",
+    firstName:
+      target.first_name || "مستخدم"
+  };
+
+  saveData();
+
+  await reply(
+    ctx,
+    `• المستخدم ذا ↤︎「${mention(target)}」
+• تم رفعه الرتبه`
+  );
+}
+
 bot.hears(
-  /^فتح المخالفات$/i,
+  /^رفع مميز$/i,
+  ctx => promoteCommand(ctx, "مميز")
+);
+
+bot.hears(
+  /^رفع مالك$/i,
+  ctx => promoteCommand(ctx, "مالك")
+);
+
+bot.hears(
+  /^رفع مالك أساسي$/i,
+  ctx =>
+    promoteCommand(
+      ctx,
+      "مالك أساسي"
+    )
+);
+
+bot.hears(
+  /^رفع myth$/i,
+  ctx => promoteCommand(ctx, "Myth")
+);
+
+bot.hears(
+  /^رفع myth 🎖️$/i,
+  ctx =>
+    promoteCommand(
+      ctx,
+      "Myth 🎖️"
+    )
+);
+
+bot.hears(
+  /^رفع dev²$/i,
+  ctx =>
+    promoteCommand(
+      ctx,
+      "Dev²🎖️"
+    )
+);
+
+bot.hears(
+  /^رفع Dev²$/i,
+  ctx =>
+    promoteCommand(
+      ctx,
+      "Dev²🎖️"
+    )
+);
+
+bot.hears(
+  /^تنزيل$/i,
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!hasLevel(ctx, ROLES.MYTH.level)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه Myth وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const chat = ensureChat(ctx);
-    chat.violations = true;
+    if (!canActOn(ctx, target)) {
+      return reply(
+        ctx,
+        "• لا يمكن تنزيل رتبه نفس رتبتك ولا اعلى من رتبتك"
+      );
+    }
+
+    ensureUser(target);
+
+    data.roles[String(target.id)].role =
+      "عضو";
+
     saveData();
 
     await reply(
       ctx,
-      "• تم فتح المخالفات"
+      `• المستخدم ذا ↤︎「${mention(target)}」
+• تم تنزيل رتبته`
     );
   }
 );
 
+/* =========================================================
+   TELEGRAM ADMIN PROMOTION
+========================================================= */
+
 bot.hears(
-  /^(غلق المخالفات|قفل المخالفات)$/i,
+  /^رفع مشرف$/i,
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!hasLevel(ctx, ROLES.MYTH.level)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    if (!(await botIsAdmin(ctx))) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه Myth وفوق ｣"
+        "• البوت ليس مشرف في القروب"
       );
     }
 
-    const chat = ensureChat(ctx);
-    chat.violations = false;
-    saveData();
+    const target =
+      await resolveTarget(ctx);
 
-    await reply(
-      ctx,
-      "• تم غلق المخالفات"
-    );
+    if (!target?.id) {
+      return reply(
+        ctx,
+        "• رد على الشخص أو منشنه"
+      );
+    }
+
+    if (!canActOn(ctx, target)) {
+      return reply(
+        ctx,
+        "• لا يمكن رفع مشرف على نفس رتبتك أو أعلى"
+      );
+    }
+
+    try {
+      await ctx.telegram.promoteChatMember(
+        ctx.chat.id,
+        target.id,
+        {
+          can_manage_chat: true,
+          can_delete_messages: true,
+          can_manage_video_chats: true,
+          can_restrict_members: true,
+          can_promote_members: false,
+          can_change_info: true,
+          can_invite_users: true,
+          can_pin_messages: true,
+          can_manage_topics: true
+        }
+      );
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• تم رفعه مشرف`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر رفعه مشرف"
+      );
+    }
+  }
+);
+
+bot.hears(
+  /^تنزيل مشرف$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
+      return reply(
+        ctx,
+        "• رد على الشخص أو منشنه"
+      );
+    }
+
+    if (!canActOn(ctx, target)) {
+      return reply(
+        ctx,
+        "• لا يمكن تنزيل مشرف بنفس رتبتك أو أعلى"
+      );
+    }
+
+    try {
+      await ctx.telegram.promoteChatMember(
+        ctx.chat.id,
+        target.id,
+        {
+          can_manage_chat: false,
+          can_delete_messages: false,
+          can_manage_video_chats: false,
+          can_restrict_members: false,
+          can_promote_members: false,
+          can_change_info: false,
+          can_invite_users: false,
+          can_pin_messages: false,
+          can_manage_topics: false
+        }
+      );
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• تم تنزيله من الإشراف`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر تنزيله من الإشراف"
+      );
+    }
   }
 );
 
@@ -765,179 +1136,112 @@ bot.hears(
    MUTE
 ========================================================= */
 
-async function doMute(ctx, target) {
-  try {
-    await ctx.telegram.restrictChatMember(
-      ctx.chat.id,
-      target.id,
-      {
-        permissions: {
-          can_send_messages: false,
-          can_send_audios: false,
-          can_send_documents: false,
-          can_send_photos: false,
-          can_send_videos: false,
-          can_send_video_notes: false,
-          can_send_voice_notes: false,
-          can_send_polls: false,
-          can_send_other_messages: false,
-          can_add_web_page_previews: false
-        }
-      }
-    );
-
-    const chat = ensureChat(ctx);
-
-    chat.muted[String(target.id)] = {
-      id: String(target.id),
-      username: target.username || "",
-      firstName:
-        target.first_name || "",
-      date: Date.now()
-    };
-
-    saveData();
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function doUnmute(ctx, target) {
-  try {
-    await ctx.telegram.restrictChatMember(
-      ctx.chat.id,
-      target.id,
-      {
-        permissions: {
-          can_send_messages: true,
-          can_send_audios: true,
-          can_send_documents: true,
-          can_send_photos: true,
-          can_send_videos: true,
-          can_send_video_notes: true,
-          can_send_voice_notes: true,
-          can_send_polls: true,
-          can_send_other_messages: true,
-          can_add_web_page_previews: true
-        }
-      }
-    );
-
-    const chat = ensureChat(ctx);
-
-    delete chat.muted[
-      String(target.id)
-    ];
-
-    saveData();
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 bot.hears(
-  /^(كتم|كتمه)$/i,
+  /^كتم$/i,
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const target = getTarget(ctx);
-
-    if (!target) {
+    if (!canActOn(ctx, target)) {
       return reply(
         ctx,
-        "• قم بالرد على المستخدم أو منشن الحساب"
+        "• لا يمكن كتم نفس رتبتك أو رتبه أعلى"
       );
     }
 
-    if (!canActOn(ctx, target.id)) {
-      return reply(
+    try {
+      await restrictUser(
         ctx,
-        "• لا يمكن كتم رتبه نفس رتبتك ولا اعلى من رتبتك"
+        target.id
+      );
+
+      saveUserInMuteStore(
+        getMuteStore(ctx.chat.id),
+        target
+      );
+
+      saveData();
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• كتمته`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر كتم المستخدم"
       );
     }
-
-    const ok =
-      await doMute(ctx, target);
-
-    if (!ok) {
-      return reply(
-        ctx,
-        "• ماقدرت أكتم المستخدم"
-      );
-    }
-
-    await reply(
-      ctx,
-      `• المستخدم ذا ↤︎「${mention(target)}」
-• كتمته`,
-      {
-        parse_mode: "MarkdownV2"
-      }
-    );
   }
 );
 
-/* =========================================================
-   فك الكتم
-========================================================= */
-
 bot.hears(
-  /^(فك الكتم|الغاء الكتم)$/i,
+  /^فك الكتم$/i,
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const target = getTarget(ctx);
-
-    if (!target) {
-      return reply(
+    try {
+      await unrestrictUser(
         ctx,
-        "• قم بالرد على المستخدم"
+        target.id
+      );
+
+      deleteFromMuteStore(
+        getMuteStore(ctx.chat.id),
+        target.id
+      );
+
+      saveData();
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• فكيت كتمه`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر فك الكتم"
       );
     }
-
-    if (!canActOn(ctx, target.id)) {
-      return reply(
-        ctx,
-        "• لا يمكن تنزيل رتبه نفس رتبتك ولا اعلى من رتبتك"
-      );
-    }
-
-    const ok =
-      await doUnmute(ctx, target);
-
-    if (!ok) {
-      return reply(
-        ctx,
-        "• ماقدرت أفك كتم المستخدم"
-      );
-    }
-
-    await reply(
-      ctx,
-      `• المستخدم ذا ↤︎「${mention(target)}」
-• فكيت كتمه`,
-      {
-        parse_mode: "MarkdownV2"
-      }
-    );
   }
 );
 
@@ -950,47 +1254,95 @@ bot.hears(
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const target = getTarget(ctx);
-
-    if (!target) {
+    if (!canActOn(ctx, target)) {
       return reply(
         ctx,
-        "• قم بالرد على المستخدم"
-      );
-    }
-
-    if (!canActOn(ctx, target.id)) {
-      return reply(
-        ctx,
-        "• لا يمكن حظر رتبه نفس رتبتك ولا اعلى من رتبتك"
+        "• لا يمكن حظر نفس رتبتك أو رتبه أعلى"
       );
     }
 
     try {
-      await ctx.telegram.banChatMember(
-        ctx.chat.id,
+      await banUser(
+        ctx,
         target.id
       );
 
       await reply(
         ctx,
         `• المستخدم ذا ↤︎「${mention(target)}」
-• حظرته`,
-        {
-          parse_mode: "MarkdownV2"
-        }
+• حظرته`
       );
-    } catch {
+    } catch (_) {
       await reply(
         ctx,
-        "• ماقدرت أحظر المستخدم"
+        "• تعذر حظر المستخدم"
+      );
+    }
+  }
+);
+
+/* =========================================================
+   UNBAN
+========================================================= */
+
+bot.hears(
+  /^فك الحظر$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
+      return reply(
+        ctx,
+        "• رد على الشخص أو منشنه"
+      );
+    }
+
+    try {
+      await unbanUser(
+        ctx,
+        target.id
+      );
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• فكيت حظره`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر فك الحظر"
       );
     }
   }
@@ -1005,55 +1357,47 @@ bot.hears(
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const target = getTarget(ctx);
-
-    if (!target) {
+    if (!canActOn(ctx, target)) {
       return reply(
         ctx,
-        "• قم بالرد على المستخدم"
-      );
-    }
-
-    if (!canActOn(ctx, target.id)) {
-      return reply(
-        ctx,
-        "• لا يمكن طرد رتبه نفس رتبتك ولا اعلى من رتبتك"
+        "• لا يمكن طرد نفس رتبتك أو رتبه أعلى"
       );
     }
 
     try {
-      await ctx.telegram.banChatMember(
-        ctx.chat.id,
+      await kickUser(
+        ctx,
         target.id
-      );
-
-      await ctx.telegram.unbanChatMember(
-        ctx.chat.id,
-        target.id,
-        {
-          only_if_banned: true
-        }
       );
 
       await reply(
         ctx,
         `• المستخدم ذا ↤︎「${mention(target)}」
-• طردته`,
-        {
-          parse_mode: "MarkdownV2"
-        }
+• طردته`
       );
-    } catch {
+    } catch (_) {
       await reply(
         ctx,
-        "• ماقدرت أطرد المستخدم"
+        "• تعذر طرد المستخدم"
       );
     }
   }
@@ -1068,130 +1412,91 @@ bot.hears(
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const target = getTarget(ctx);
-
-    if (!target) {
+    if (!canActOn(ctx, target)) {
       return reply(
         ctx,
-        "• قم بالرد على المستخدم"
-      );
-    }
-
-    if (!canActOn(ctx, target.id)) {
-      return reply(
-        ctx,
-        "• لا يمكن تقييد رتبه نفس رتبتك ولا اعلى من رتبتك"
+        "• لا يمكن تقييد نفس رتبتك أو رتبه أعلى"
       );
     }
 
     try {
-      await ctx.telegram.restrictChatMember(
-        ctx.chat.id,
-        target.id,
-        {
-          permissions: {
-            can_send_messages: true,
-            can_send_audios: false,
-            can_send_documents: false,
-            can_send_photos: false,
-            can_send_videos: false,
-            can_send_video_notes: false,
-            can_send_voice_notes: false,
-            can_send_polls: false,
-            can_send_other_messages: false,
-            can_add_web_page_previews: false
-          }
-        }
+      await restrictUser(
+        ctx,
+        target.id
       );
 
       await reply(
         ctx,
         `• المستخدم ذا ↤︎「${mention(target)}」
-• قيدته`,
-        {
-          parse_mode: "MarkdownV2"
-        }
+• قيدته`
       );
-    } catch {
+    } catch (_) {
       await reply(
         ctx,
-        "• ماقدرت أقيد المستخدم"
+        "• تعذر تقييد المستخدم"
       );
     }
   }
 );
 
-/* =========================================================
-   UNRESTRICT
-========================================================= */
-
 bot.hears(
-  /^(فك التقييد|الغاء التقييد)$/i,
+  /^فك التقييد$/i,
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
-      return reply(
+    if (
+      !(await requireLevel(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
-      );
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
     }
 
-    const target = getTarget(ctx);
+    const target =
+      await resolveTarget(ctx);
 
-    if (!target) {
+    if (!target?.id) {
       return reply(
         ctx,
-        "• قم بالرد على المستخدم"
-      );
-    }
-
-    if (!canActOn(ctx, target.id)) {
-      return reply(
-        ctx,
-        "• لا يمكن فك تقييد رتبه نفس رتبتك ولا اعلى من رتبتك"
+        "• رد على الشخص أو منشنه"
       );
     }
 
     try {
-      await ctx.telegram.restrictChatMember(
-        ctx.chat.id,
-        target.id,
-        {
-          permissions: {
-            can_send_messages: true,
-            can_send_audios: true,
-            can_send_documents: true,
-            can_send_photos: true,
-            can_send_videos: true,
-            can_send_video_notes: true,
-            can_send_voice_notes: true,
-            can_send_polls: true,
-            can_send_other_messages: true,
-            can_add_web_page_previews: true
-          }
-        }
+      await unrestrictUser(
+        ctx,
+        target.id
       );
 
       await reply(
         ctx,
         `• المستخدم ذا ↤︎「${mention(target)}」
-• فكيت تقييده`,
-        {
-          parse_mode: "MarkdownV2"
-        }
+• فكيت تقييده`
       );
-    } catch {
+    } catch (_) {
       await reply(
         ctx,
-        "• ماقدرت أفك تقييد المستخدم"
+        "• تعذر فك التقييد"
       );
     }
   }
@@ -1206,61 +1511,107 @@ bot.hears(
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    if (!ownerRequired(ctx)) {
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• ماتقدر تستخدم الامر على ↤ ｢ لازم تكون الرتبه مالك وفوق ｣"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const target = getTarget(ctx);
-
-    if (!target) {
+    if (!canActOn(ctx, target)) {
       return reply(
         ctx,
-        "• قم بالرد على المستخدم"
+        "• لا يمكن كتم نفس رتبتك أو رتبه أعلى"
       );
     }
 
-    if (!canActOn(ctx, target.id)) {
+    try {
+      await restrictUser(
+        ctx,
+        target.id
+      );
+
+      saveUserInMuteStore(
+        getGlobalMuteStore(),
+        target
+      );
+
+      saveData();
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• كتمته كتم عام`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر تنفيذ الكتم العام"
+      );
+    }
+  }
+);
+
+bot.hears(
+  /^فك الكتم العام$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["مالك"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
       return reply(
         ctx,
-        "• لا يمكن كتم عام رتبه نفس رتبتك ولا اعلى من رتبتك"
+        "• رد على الشخص أو منشنه"
       );
     }
 
-    const ok =
-      await doMute(ctx, target);
-
-    if (!ok) {
-      return reply(
+    try {
+      await unrestrictUser(
         ctx,
-        "• ماقدرت أكتم المستخدم"
+        target.id
+      );
+
+      deleteFromMuteStore(
+        getGlobalMuteStore(),
+        target.id
+      );
+
+      saveData();
+
+      await reply(
+        ctx,
+        `• المستخدم ذا ↤︎「${mention(target)}」
+• فكيت الكتم العام عنه`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر فك الكتم العام"
       );
     }
-
-    const chat = ensureChat(ctx);
-
-    chat.globalMuted[
-      String(target.id)
-    ] = {
-      id: String(target.id),
-      username: target.username || "",
-      firstName:
-        target.first_name || "",
-      date: Date.now()
-    };
-
-    saveData();
-
-    await reply(
-      ctx,
-      `• المستخدم ذا ↤︎「${mention(target)}」
-• كتمته عام`,
-      {
-        parse_mode: "MarkdownV2"
-      }
-    );
   }
 );
 
@@ -1273,9 +1624,9 @@ bot.hears(
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    const chat = ensureChat(ctx);
-    const users =
-      Object.values(chat.muted);
+    const users = Object.values(
+      getMuteStore(ctx.chat.id)
+    );
 
     if (!users.length) {
       return reply(
@@ -1284,15 +1635,14 @@ bot.hears(
       );
     }
 
-    const lines =
-      users.map(
-        (u, i) =>
-          `${i + 1}\\. ${mention({
-            id: u.id,
-            first_name: u.firstName,
-            username: u.username
-          })}`
-      );
+    const lines = users.map(
+      (u, i) =>
+        `${i + 1}. ${mention({
+          id: u.id,
+          first_name: u.firstName,
+          username: u.username
+        })}`
+    );
 
     await reply(
       ctx,
@@ -1304,14 +1654,18 @@ bot.hears(
   }
 );
 
+/* =========================================================
+   GLOBAL MUTED LIST
+========================================================= */
+
 bot.hears(
   /^خخ$/i,
   async ctx => {
     if (!isGroup(ctx)) return;
 
-    const chat = ensureChat(ctx);
-    const users =
-      Object.values(chat.globalMuted);
+    const users = Object.values(
+      getGlobalMuteStore()
+    );
 
     if (!users.length) {
       return reply(
@@ -1320,16 +1674,1037 @@ bot.hears(
       );
     }
 
-    const lines =
-      users.map(
-        (u, i) =>
-          `${i + 1}\\. ${mention({
-            id: u.id,
-            first_name: u.firstName,
-            username: u.username
-          })}`
-      );
+    const lines = users.map(
+      (u, i) =>
+        `${i + 1}. ${mention({
+          id: u.id,
+          first_name: u.firstName,
+          username: u.username
+        })}`
+    );
 
     await reply(
       ctx,
-      `• المكتومين عام:\n\n${lines.join("\n")}
+      `• المكتومين عام:\n\n${lines.join("\n")}`,
+      {
+        parse_mode: "MarkdownV2"
+      }
+    );
+  }
+);
+
+/* =========================================================
+   VIOLATIONS
+========================================================= */
+
+bot.hears(
+  /^فتح المخالفات$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    const chat = ensureChat(ctx);
+    chat.violations = true;
+
+    saveData();
+
+    await reply(
+      ctx,
+      "• تم فتح المخالفات"
+    );
+  }
+);
+
+bot.hears(
+  /^غلق المخالفات$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    const chat = ensureChat(ctx);
+    chat.violations = false;
+
+    saveData();
+
+    await reply(
+      ctx,
+      "• تم غلق المخالفات"
+    );
+  }
+);
+
+/* =========================================================
+   CLEANING
+========================================================= */
+
+async function cleanMessages(
+  ctx,
+  predicate,
+  title
+) {
+  if (!isGroup(ctx)) return;
+
+  if (
+    !(await requireLevel(
+      ctx,
+      ROLES["Myth"]
+    ))
+  ) {
+    return;
+  }
+
+  if (!(await botIsAdmin(ctx))) {
+    return reply(
+      ctx,
+      "• البوت يحتاج صلاحية حذف الرسائل"
+    );
+  }
+
+  const messageId =
+    ctx.message.message_id;
+
+  await reply(
+    ctx,
+    "• انتظر ابحث لك عن الرسائل المعدله"
+  );
+
+  let deleted = 0;
+
+  for (
+    let i = 1;
+    i <= 200;
+    i++
+  ) {
+    const id =
+      messageId - i;
+
+    if (id <= 0) break;
+
+    try {
+      const fakeCtx = {
+        chat: ctx.chat,
+        message: {
+          message_id: id
+        }
+      };
+
+      if (await predicate(fakeCtx)) {
+        await ctx.telegram.deleteMessage(
+          ctx.chat.id,
+          id
+        );
+
+        deleted++;
+      }
+    } catch (_) {}
+  }
+
+  if (!deleted) {
+    await reply(
+      ctx,
+      `• ${title}\n• لا يوجد ${title} في القروب`
+    );
+    return;
+  }
+
+  await reply(
+    ctx,
+    `• ${title}\n• مسحت ( ${deleted} ) من الرسائل`
+  );
+}
+
+async function inspectMessage(
+  ctx,
+  messageId
+) {
+  try {
+    const chatId = ctx.chat.id;
+
+    const result =
+      await ctx.telegram.forwardMessage(
+        ctx.from.id,
+        chatId,
+        messageId
+      );
+
+    if (!result) return null;
+
+    return result;
+  } catch (_) {
+    return null;
+  }
+}
+
+/*
+  Telegram Bot API لا يوفر للبوت طريقة للحصول على
+  الرسائل القديمة بمجرد رقم الرسالة، لذلك التنظيف الحقيقي
+  يعتمد على الرسائل التي يستطيع البوت التعامل معها.
+*/
+
+bot.hears(
+  /^تنظيف$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    await reply(
+      ctx,
+      "• التنظيف بالأرقام:\n\n1 - صور\n2 - فيديوهات\n3 - صوتيات\n4 - فويسات\n5 - قيفات\n6 - ملصقات\n7 - وسائط\n8 - رسائل البوت\n9 - رسائل معدله"
+    );
+  }
+);
+
+/* =========================================================
+   PIN / UNPIN
+========================================================= */
+
+bot.hears(
+  /^تثبيت$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      ctx.message?.reply_to_message;
+
+    if (!target) {
+      return reply(
+        ctx,
+        "• رد على الرسالة المراد تثبيتها"
+      );
+    }
+
+    try {
+      await ctx.telegram.pinChatMessage(
+        ctx.chat.id,
+        target.message_id,
+        {
+          disable_notification: false
+        }
+      );
+
+      await reply(
+        ctx,
+        "• تم تثبيت الرسالة"
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر تثبيت الرسالة"
+      );
+    }
+  }
+);
+
+bot.hears(
+  /^الغاء التثبيت$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    try {
+      await ctx.telegram.unpinChatMessage(
+        ctx.chat.id
+      );
+
+      await reply(
+        ctx,
+        "• تم الغاء تثبيت الرسالة"
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر الغاء التثبيت"
+      );
+    }
+  }
+);
+
+/* =========================================================
+   DELETE
+========================================================= */
+
+bot.hears(
+  /^حذف$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    const target =
+      ctx.message?.reply_to_message;
+
+    if (!target) {
+      return reply(
+        ctx,
+        "• رد على الرسالة المراد حذفها"
+      );
+    }
+
+    try {
+      await ctx.telegram.deleteMessage(
+        ctx.chat.id,
+        target.message_id
+      );
+
+      await reply(
+        ctx,
+        "• تم حذف الرسالة"
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر حذف الرسالة"
+      );
+    }
+  }
+);
+
+/* =========================================================
+   WHISPERS
+========================================================= */
+
+function createWhisperId() {
+  return (
+    Date.now().toString(36) +
+    Math.random()
+      .toString(36)
+      .slice(2, 8)
+  );
+}
+
+function saveWhisper(whisper) {
+  data.whispers[whisper.id] =
+    whisper;
+
+  saveData();
+}
+
+async function sendWhisper(
+  ctx,
+  target,
+  sourceMessage
+) {
+  if (!target?.id) {
+    return reply(
+      ctx,
+      "• رد على الشخص أو منشنه"
+    );
+  }
+
+  const id = createWhisperId();
+
+  let whisper = {
+    id,
+    from: {
+      id: ctx.from.id,
+      username:
+        ctx.from.username || "",
+      firstName:
+        ctx.from.first_name || "مستخدم"
+    },
+    to: {
+      id: target.id,
+      username:
+        target.username || "",
+      firstName:
+        target.first_name || "مستخدم"
+    },
+    chatId: ctx.chat.id,
+    type: "text",
+    text: "",
+    createdAt: Date.now()
+  };
+
+  if (sourceMessage?.text) {
+    whisper.type = "text";
+    whisper.text =
+      sourceMessage.text;
+  } else if (sourceMessage?.photo) {
+    whisper.type = "photo";
+    whisper.fileId =
+      sourceMessage.photo[
+        sourceMessage.photo.length - 1
+      ].file_id;
+    whisper.caption =
+      sourceMessage.caption || "";
+  } else if (sourceMessage?.animation) {
+    whisper.type = "animation";
+    whisper.fileId =
+      sourceMessage.animation.file_id;
+    whisper.caption =
+      sourceMessage.caption || "";
+  } else if (sourceMessage?.sticker) {
+    whisper.type = "sticker";
+    whisper.fileId =
+      sourceMessage.sticker.file_id;
+  } else {
+    return reply(
+      ctx,
+      "• نوع الرسالة غير مدعوم للهمسة"
+    );
+  }
+
+  saveWhisper(whisper);
+
+  const link =
+    `https://t.me/${ctx.botInfo.username}?start=whisper_${id}`;
+
+  try {
+    await ctx.telegram.sendMessage(
+      ctx.chat.id,
+      `• وصلت همسه لـ ${mention(target)}`,
+      {
+        parse_mode: "MarkdownV2",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "رؤية الهمسه",
+                url: link
+              },
+              {
+                text: "رد على الهمسه",
+                url:
+                  `https://t.me/${ctx.botInfo.username}?start=reply_${id}`
+              }
+            ]
+          ]
+        }
+      }
+    );
+
+    await reply(
+      ctx,
+      "• تم إرسال الهمسه"
+    );
+  } catch (_) {
+    await reply(
+      ctx,
+      "• تعذر إرسال الهمسه"
+    );
+  }
+}
+
+bot.hears(
+  /^همسه$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    const target =
+      await resolveTarget(ctx);
+
+    if (!target?.id) {
+      return reply(
+        ctx,
+        "• رد على الشخص الذي تريد إرسال الهمسه له"
+      );
+    }
+
+    if (
+      !ctx.message?.reply_to_message
+    ) {
+      return reply(
+        ctx,
+        "• رد على الرسالة التي تريد إرسالها كهمسه"
+      );
+    }
+
+    await sendWhisper(
+      ctx,
+      target,
+      ctx.message.reply_to_message
+    );
+  }
+);
+
+bot.action(
+  /^see_whisper_(.+)$/,
+  async ctx => {
+    const id = ctx.match[1];
+    const whisper =
+      data.whispers[id];
+
+    if (!whisper) {
+      return ctx.answerCbQuery(
+        "الهمسه غير موجوده",
+        { show_alert: true }
+      );
+    }
+
+    if (
+      String(ctx.from.id) !==
+      String(whisper.to.id)
+    ) {
+      return ctx.answerCbQuery(
+        "هذه الهمسه ليست لك",
+        { show_alert: true }
+      );
+    }
+
+    try {
+      if (whisper.type === "text") {
+        await ctx.reply(
+          `• الهمسه:\n\n${whisper.text}`
+        );
+      } else if (
+        whisper.type === "photo"
+      ) {
+        await ctx.replyWithPhoto(
+          whisper.fileId,
+          {
+            caption:
+              whisper.caption || ""
+          }
+        );
+      } else if (
+        whisper.type === "animation"
+      ) {
+        await ctx.replyWithAnimation(
+          whisper.fileId,
+          {
+            caption:
+              whisper.caption || ""
+          }
+        );
+      } else if (
+        whisper.type === "sticker"
+      ) {
+        await ctx.replyWithSticker(
+          whisper.fileId
+        );
+      }
+
+      await ctx.answerCbQuery();
+    } catch (_) {
+      await ctx.answerCbQuery(
+        "تعذر عرض الهمسه",
+        { show_alert: true }
+      );
+    }
+  }
+);
+
+bot.action(
+  /^reply_whisper_(.+)$/,
+  async ctx => {
+    const id = ctx.match[1];
+    const whisper =
+      data.whispers[id];
+
+    if (!whisper) {
+      return ctx.answerCbQuery(
+        "الهمسه غير موجوده",
+        { show_alert: true }
+      );
+    }
+
+    if (
+      String(ctx.from.id) !==
+      String(whisper.to.id)
+    ) {
+      return ctx.answerCbQuery(
+        "هذه الهمسه ليست لك",
+        { show_alert: true }
+      );
+    }
+
+    data.pendingReplies[
+      String(ctx.from.id)
+    ] = id;
+
+    saveData();
+
+    await ctx.answerCbQuery();
+
+    await ctx.reply(
+      "• ارسل ردك الآن، وسيتم إرساله لصاحب الهمسه"
+    );
+  }
+);
+
+/* =========================================================
+   ADD CUSTOM COMMAND
+========================================================= */
+
+bot.hears(
+  /^اضف امر$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    data.pendingWhispers[
+      String(ctx.from.id)
+    ] = {
+      type: "command",
+      chatId: ctx.chat.id
+    };
+
+    saveData();
+
+    await reply(
+      ctx,
+      "• ارسل الأمر والرد بهذا الشكل:\n\nالأمر = الرد"
+    );
+  }
+);
+
+/* =========================================================
+   ADD CUSTOM REPLY
+========================================================= */
+
+bot.hears(
+  /^اضف رد$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    data.pendingWhispers[
+      String(ctx.from.id)
+    ] = {
+      type: "reply",
+      chatId: ctx.chat.id
+    };
+
+    saveData();
+
+    await reply(
+      ctx,
+      "• ارسل الأمر والرد بهذا الشكل:\n\nالكلمة = الرد"
+    );
+  }
+);
+
+/* =========================================================
+   CUSTOM COMMANDS / REPLIES
+========================================================= */
+
+bot.on("text", async ctx => {
+  if (!isGroup(ctx)) return;
+
+  const text =
+    ctx.message.text.trim();
+
+  const pending =
+    data.pendingWhispers[
+      String(ctx.from.id)
+    ];
+
+  if (
+    pending &&
+    pending.chatId === ctx.chat.id &&
+    pending.type === "command"
+  ) {
+    const parts =
+      text.split("=");
+
+    if (parts.length >= 2) {
+      const key =
+        getCustomKey(parts[0]);
+
+      const value =
+        parts
+          .slice(1)
+          .join("=")
+          .trim();
+
+      if (key && value) {
+        const chatId =
+          String(ctx.chat.id);
+
+        if (!data.customCommands[chatId]) {
+          data.customCommands[chatId] = {};
+        }
+
+        data.customCommands[chatId][key] =
+          value;
+
+        delete data.pendingWhispers[
+          String(ctx.from.id)
+        ];
+
+        saveData();
+
+        await reply(
+          ctx,
+          "• تم إضافة الأمر والرد"
+        );
+
+        return;
+      }
+    }
+  }
+
+  if (
+    pending &&
+    pending.chatId === ctx.chat.id &&
+    pending.type === "reply"
+  ) {
+    const parts =
+      text.split("=");
+
+    if (parts.length >= 2) {
+      const key =
+        getCustomKey(parts[0]);
+
+      const value =
+        parts
+          .slice(1)
+          .join("=")
+          .trim();
+
+      if (key && value) {
+        const chatId =
+          String(ctx.chat.id);
+
+        if (!data.customReplies[chatId]) {
+          data.customReplies[chatId] = {};
+        }
+
+        data.customReplies[chatId][key] =
+          value;
+
+        delete data.pendingWhispers[
+          String(ctx.from.id)
+        ];
+
+        saveData();
+
+        await reply(
+          ctx,
+          "• تم إضافة الرد"
+        );
+
+        return;
+      }
+    }
+  }
+
+  const pendingReplyId =
+    data.pendingReplies[
+      String(ctx.from.id)
+    ];
+
+  if (pendingReplyId) {
+    const whisper =
+      data.whispers[pendingReplyId];
+
+    if (whisper) {
+      try {
+        await ctx.telegram.sendMessage(
+          whisper.from.id,
+          `• وصلك رد على الهمسه:\n\n${text}`
+        );
+
+        await reply(
+          ctx,
+          "• تم إرسال ردك"
+        );
+      } catch (_) {
+        await reply(
+          ctx,
+          "• تعذر إرسال الرد"
+        );
+      }
+    }
+
+    delete data.pendingReplies[
+      String(ctx.from.id)
+    ];
+
+    saveData();
+
+    return;
+  }
+
+  const chatId =
+    String(ctx.chat.id);
+
+  const customCommand =
+    data.customCommands[chatId]?.[
+      getCustomKey(text)
+    ];
+
+  if (customCommand) {
+    await reply(
+      ctx,
+      customCommand
+    );
+
+    return;
+  }
+
+  const customReply =
+    data.customReplies[chatId]?.[
+      getCustomKey(text)
+    ];
+
+  if (customReply) {
+    await reply(
+      ctx,
+      customReply
+    );
+  }
+});
+
+/* =========================================================
+   OWNER
+========================================================= */
+
+bot.hears(
+  /^المالك$/i,
+  async ctx => {
+    await reply(
+      ctx,
+      `• مالك البوت ↤︎ ${mention({
+        id: 0,
+        first_name: "j4xa7"
+      })}`,
+      {
+        parse_mode: "MarkdownV2"
+      }
+    );
+  }
+);
+
+/* =========================================================
+   BOT INFO
+========================================================= */
+
+bot.command(
+  "id",
+  async ctx => {
+    await reply(
+      ctx,
+      `• ايديك ↤︎ ${ctx.from.id}`
+    );
+  }
+);
+
+bot.command(
+  "chatid",
+  async ctx => {
+    if (!ctx.chat) return;
+
+    await reply(
+      ctx,
+      `• ايدي القروب ↤︎ ${ctx.chat.id}`
+    );
+  }
+);
+
+/* =========================================================
+   ADMIN COMMANDS
+========================================================= */
+
+bot.hears(
+  /^عدد الاعضاء$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Dev²🎖️"]
+      ))
+    ) {
+      return;
+    }
+
+    try {
+      const count =
+        await ctx.telegram.getChatMemberCount(
+          ctx.chat.id
+        );
+
+      await reply(
+        ctx,
+        `• عدد أعضاء القروب ↤︎ ${count}`
+      );
+    } catch (_) {
+      await reply(
+        ctx,
+        "• تعذر معرفة عدد الأعضاء"
+      );
+    }
+  }
+);
+
+bot.hears(
+  /^البوت$/i,
+  async ctx => {
+    await reply(
+      ctx,
+      `• رتبتك ↤︎ ${roleName(
+        ctx.from.id,
+        ctx.from.username
+      )}
+• البوت يعمل بنجاح`
+    );
+  }
+);
+
+/* =========================================================
+   SETTINGS
+========================================================= */
+
+bot.hears(
+  /^البوت يرد$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    ensureChat(ctx).botReplies =
+      true;
+
+    saveData();
+
+    await reply(
+      ctx,
+      "• تم تشغيل ردود البوت"
+    );
+  }
+);
+
+bot.hears(
+  /^البوت ما يرد$/i,
+  async ctx => {
+    if (!isGroup(ctx)) return;
+
+    if (
+      !(await requireLevel(
+        ctx,
+        ROLES["Myth"]
+      ))
+    ) {
+      return;
+    }
+
+    ensureChat(ctx).botReplies =
+      false;
+
+    saveData();
+
+    await reply(
+      ctx,
+      "• تم إيقاف ردود البوت"
+    );
+  }
+);
+
+/* =========================================================
+   ERROR HANDLING
+========================================================= */
+
+bot.catch((err, ctx) => {
+  console.error(
+    "BOT ERROR:",
+    err
+  );
+
+  try {
+    if (ctx?.chat) {
+      ctx.reply(
+        "• حدث خطأ بسيط، حاول مرة ثانية"
+      ).catch(() => {});
+    }
+  } catch (_) {}
+});
+
+/* =========================================================
+   LAUNCH
+========================================================= */
+
+bot.launch()
+  .then(() => {
+    console.log(
+      "Bot started successfully"
+    );
+  })
+  .catch(err => {
+    console.error(
+      "Failed to start bot:",
+      err
+    );
+  });
+
+process.once(
+  "SIGINT",
+  () => bot.stop("SIGINT")
+);
+
+process.once(
+  "SIGTERM",
+  () => bot.stop("SIGTERM")
+);
