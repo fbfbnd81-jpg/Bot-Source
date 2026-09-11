@@ -2864,7 +2864,7 @@ bot.hears(
   }
 );
 
-bot.hears(/^زواجي$/i, ctx => {
+bot.hears(/^زواجي$/i, async ctx => {
   if (!isGroup(ctx)) return;
 
   const chat =
