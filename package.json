@@ -1,12 +1,16 @@
 {
-  "name": "telegram-bot",
+  "name": "bot-source",
   "version": "1.0.0",
-  "main": "index.cjs",
+  "description": "Telegram Group Management Bot",
+  "main": "index.js",
   "scripts": {
-    "start": "node index.cjs"
+    "start": "node index.js"
   },
   "dependencies": {
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "yt-search": "^2.13.1"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
-
