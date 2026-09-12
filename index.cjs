@@ -146,6 +146,30 @@ function getChatId(ctx) {
   return ctx.chat?.id;
 }
 
+function defaultProtection() {
+  return {
+    enabled: true,
+    auto: true,
+    links: false,
+    edit: false,
+    spam: false,
+    ads: false,
+    mentions: false,
+    forwards: false,
+    photos: false,
+    videos: false,
+    documents: false,
+    stickers: false,
+    gifs: false,
+    audio: false,
+    commands: false,
+    forbiddenWords: true,
+    english: false,
+    contacts: false,
+    crossGroupReplies: false
+  };
+}
+
 function getGroup(chatId) {
   const id = String(chatId);
 
@@ -174,7 +198,8 @@ function getGroup(chatId) {
       botReplies: true,
       musicEnabled: true,
       adminPermissions: {},
-      settings: {}
+      settings: {},
+      protection: defaultProtection()
     };
   }
 
@@ -205,6 +230,16 @@ function getGroup(chatId) {
   group.adminPermissions ||= {};
   group.settings ||= {};
 
+  group.protection ||= defaultProtection();
+
+  const protectionDefaults = defaultProtection();
+
+  for (const key of Object.keys(protectionDefaults)) {
+    if (group.protection[key] === undefined) {
+      group.protection[key] = protectionDefaults[key];
+    }
+  }
+
   return group;
 }
 
@@ -224,6 +259,7 @@ function ensureUser(user) {
       messages: 0,
       points: 0,
       money: 0,
+      bank: 0,
       warnings: 0
     };
   }
@@ -239,6 +275,7 @@ function ensureUser(user) {
   stored.messages ||= 0;
   stored.points ||= 0;
   stored.money ||= 0;
+  stored.bank ||= 0;
   stored.warnings ||= 0;
 
   return stored;
@@ -246,9 +283,7 @@ function ensureUser(user) {
 
 function getUserLevel(userId) {
   const user = data.users[String(userId)];
-
   if (!user) return 0;
-
   return ROLES[user.role] ?? 0;
 }
 
@@ -287,6 +322,11 @@ async function getLevel(ctx, userId) {
   const member = await getChatUser(ctx, userId);
 
   if (member?.status === "creator") return 3;
+
+  if (member?.status === "administrator") {
+    const internal = getUserLevel(userId);
+    return Math.max(2, internal);
+  }
 
   return getUserLevel(userId);
 }
@@ -424,11 +464,8 @@ const PERMISSIONS = [
 
 function permissionValue(member, key) {
   if (!member) return false;
-
   if (member.status === "creator") return true;
-
   if (member.status !== "administrator") return false;
-
   return member[key] === true;
 }
 
@@ -451,9 +488,52 @@ function formatPermissions(member, self = false) {
   return lines.join("\n");
 }
 
+async function getMyPermissions(ctx) {
+  const member =
+    await getChatUser(ctx, ctx.from.id);
+
+  if (!member) {
+    return replyCommand(
+      ctx,
+      "• ما قدرت أجيب صلاحياتك"
+    );
+  }
+
+  return replyCommand(
+    ctx,
+    formatPermissions(member, true)
+  );
+}
+
+async function getTargetPermissions(ctx) {
+  const target =
+    await resolveTarget(ctx);
+
+  if (!target) {
+    return replyCommand(
+      ctx,
+      "• رد على رسالة المستخدم أولاً"
+    );
+  }
+
+  const member =
+    await getChatUser(ctx, target.id);
+
+  if (!member) {
+    return replyCommand(
+      ctx,
+      "• ما قدرت أجيب صلاحيات المستخدم"
+    );
+  }
+
+  return replyCommand(
+    ctx,
+    formatPermissions(member, false)
+  );
+}
+
 /* =========================================================
    الحماية
-   الحماية تشمل رتبة عضو فقط
 ========================================================= */
 
 function containsLink(text = "") {
@@ -463,9 +543,258 @@ function containsLink(text = "") {
 function containsForbiddenWord(text, group) {
   const lower = String(text || "").toLowerCase();
 
-  return group.forbiddenWords.some(word =>
+  return (group.forbiddenWords || []).some(word =>
     lower.includes(String(word).toLowerCase())
   );
+}
+
+function hasEnglish(text = "") {
+  return /[A-Za-z]/.test(String(text));
+}
+
+function hasMention(message) {
+  const entities = [
+    ...(message?.entities || []),
+    ...(message?.caption_entities || [])
+  ];
+
+  return entities.some(
+    entity =>
+      entity.type === "mention" ||
+      entity.type === "text_mention"
+  );
+}
+
+function hasForward(message) {
+  if (!message) return false;
+
+  return !!(
+    message.forward_origin ||
+    message.forward_from ||
+    message.forward_from_chat ||
+    message.forward_date
+  );
+}
+
+function hasCrossGroupReply(message) {
+  if (!message?.reply_to_message) return false;
+
+  const replied =
+    message.reply_to_message;
+
+  return !!(
+    replied.forward_origin ||
+    replied.forward_from ||
+    replied.forward_from_chat
+  );
+}
+
+function isAdvertisement(text = "") {
+  const value = String(text).toLowerCase();
+
+  const patterns = [
+    /تابعونا/,
+    /اشتركوا/,
+    /اعلان/,
+    /إعلان/,
+    /للبيع/,
+    /للتواصل/,
+    /تواصل معي/,
+    /خصم/,
+    /خصومات/,
+    /متجر/,
+    /قناة/,
+    /مسابقة/,
+    /رابطنا/,
+    /join/,
+    /subscribe/,
+    /sale/,
+    /discount/,
+    /promo/
+  ];
+
+  return patterns.some(pattern =>
+    pattern.test(value)
+  );
+}
+
+function isSpamMessage(ctx, group) {
+  const userId =
+    String(ctx.from.id);
+
+  const now = Date.now();
+
+  group.settings.spamTracker ||= {};
+  group.settings.spamTracker[userId] ||= [];
+
+  const tracker =
+    group.settings.spamTracker[userId];
+
+  const text =
+    ctx.message?.text ||
+    ctx.message?.caption ||
+    ctx.message?.sticker?.file_unique_id ||
+    "";
+
+  tracker.push({
+    text: String(text).slice(0, 300),
+    time: now
+  });
+
+  while (
+    tracker.length &&
+    now - tracker[0].time > 7000
+  ) {
+    tracker.shift();
+  }
+
+  const recent =
+    tracker.filter(
+      x =>
+        now - x.time <= 4000 &&
+        x.text === String(text).slice(0, 300)
+    );
+
+  return recent.length >= 4;
+}
+
+function getViolationReason(ctx, group) {
+  const message =
+    ctx.message || {};
+
+  const text =
+    message.text ||
+    message.caption ||
+    "";
+
+  const p =
+    group.protection;
+
+  if (
+    p.links &&
+    containsLink(text)
+  ) {
+    return "روابط";
+  }
+
+  if (
+    p.ads &&
+    isAdvertisement(text)
+  ) {
+    return "إعلانات";
+  }
+
+  if (
+    p.mentions &&
+    hasMention(message)
+  ) {
+    return "منشن";
+  }
+
+  if (
+    p.forwards &&
+    hasForward(message)
+  ) {
+    return "فوروورد";
+  }
+
+  if (
+    p.crossGroupReplies &&
+    hasCrossGroupReply(message)
+  ) {
+    return "رد من قروب ثاني";
+  }
+
+  if (
+    p.photos &&
+    message.photo
+  ) {
+    return "صور";
+  }
+
+  if (
+    p.videos &&
+    message.video
+  ) {
+    return "فيديو";
+  }
+
+  if (
+    p.documents &&
+    message.document
+  ) {
+    return "ملفات";
+  }
+
+  if (
+    p.stickers &&
+    message.sticker
+  ) {
+    return "ملصقات";
+  }
+
+  if (
+    p.gifs &&
+    message.animation
+  ) {
+    return "GIF";
+  }
+
+  if (
+    p.audio &&
+    (message.audio || message.voice || message.video_note)
+  ) {
+    return "صوتيات";
+  }
+
+  if (
+    p.contacts &&
+    message.contact
+  ) {
+    return "جهات اتصال";
+  }
+
+  if (
+    p.commands &&
+    typeof message.text === "string" &&
+    message.text.trim().startsWith("/")
+  ) {
+    return "أوامر";
+  }
+
+  if (
+    p.english &&
+    hasEnglish(text)
+  ) {
+    return "إنجليزي";
+  }
+
+  if (
+    p.spam &&
+    isSpamMessage(ctx, group)
+  ) {
+    return "تكرار وسبام";
+  }
+
+  if (
+    p.forbiddenWords &&
+    containsForbiddenWord(text, group)
+  ) {
+    return "كلمات ممنوعة";
+  }
+
+  return null;
+}
+
+async function sendViolation(ctx, reason) {
+  try {
+    return await safeReply(
+      ctx,
+      `• مخالفة\n• العضو ↤︎ ${mention(ctx.from)}\n• السبب ↤︎ ${escapeHtml(reason)}`
+    );
+  } catch {
+    return null;
+  }
 }
 
 async function protection(ctx) {
@@ -484,34 +813,32 @@ async function protection(ctx) {
 
   ensureUser(user);
 
-  /*
-   * =====================================================
-   * الحماية تشمل رتبة عضو فقط
-   *
-   * عضو       = 0  ← الحماية تعمل
-   * مميز      = 1  ← مستثنى
-   * مالك      = 2  ← مستثنى
-   * مالك أساسي = 3 ← مستثنى
-   * Myth      = 4  ← مستثنى
-   * Myth🎖️    = 5  ← مستثنى
-   * Dev²🎖️    = 6  ← مستثنى
-   * Dev🎖️     = 7  ← مستثنى
-   * =====================================================
-   */
-
-  const userLevel =
-    getUserLevel(user.id);
-
-  if (userLevel !== 0) {
-    return false;
-  }
-
   const group =
     getGroup(ctx.chat.id);
 
   /*
-   * الكتم
-   */
+    Dev @j4xa7 لا يتأثر بالحماية
+  */
+  if (isDeveloper(user)) {
+    return false;
+  }
+
+  const member =
+    await getChatUser(ctx, user.id);
+
+  /*
+    المشرفين والمالك لا تطبق عليهم الحماية
+  */
+  if (
+    member?.status === "creator" ||
+    member?.status === "administrator"
+  ) {
+    return false;
+  }
+
+  /*
+    الكتم
+  */
   if (
     group.muted[String(user.id)] ||
     group.globalMuted[String(user.id)]
@@ -520,55 +847,195 @@ async function protection(ctx) {
       ctx,
       ctx.message.message_id
     );
-
     return true;
   }
 
   /*
-   * المخالفات مقفلة
-   */
-  if (!group.violationsEnabled) {
+    الحماية مقفلة
+  */
+  if (
+    !group.protection?.enabled ||
+    !group.protection?.auto
+  ) {
     return false;
   }
 
-  const text =
-    ctx.message.text ||
-    ctx.message.caption ||
-    "";
-
   /*
-   * منع الروابط
-   */
-  if (
-    group.linksEnabled &&
-    containsLink(text)
-  ) {
-    await safeDelete(
-      ctx,
-      ctx.message.message_id
-    );
-
-    return true;
+    الحماية للمستخدمين رتبة عضو فقط
+  */
+  if (getUserLevel(user.id) !== 0) {
+    return false;
   }
 
-  /*
-   * الكلمات الممنوعة
-   */
+  const reason =
+    getViolationReason(ctx, group);
+
+  if (!reason) {
+    return false;
+  }
+
+  await safeDelete(
+    ctx,
+    ctx.message.message_id
+  );
+
+  await sendViolation(
+    ctx,
+    reason
+  );
+
+  return true;
+}
+
+/* =========================================================
+   إعدادات الحماية
+========================================================= */
+
+async function requireProtectionAdmin(ctx) {
+  const level =
+    await getLevel(ctx, ctx.from.id);
+
+  if (level < 4 && !(await isDevAccess(ctx))) {
+    await replyCommand(
+      ctx,
+      "• هذا الأمر يحتاج رتبة Myth🎖️ أو أعلى"
+    );
+    return false;
+  }
+
+  return true;
+}
+
+async function setProtection(ctx, enabled) {
+  if (!(await requireProtectionAdmin(ctx))) return;
+
+  const group =
+    getGroup(ctx.chat.id);
+
+  group.protection.enabled =
+    enabled;
+
+  group.violationsEnabled =
+    enabled;
+
+  saveData();
+
+  return replyCommand(
+    ctx,
+    `• تم ${enabled ? "تفعيل" : "تعطيل"} الحماية`
+  );
+}
+
+async function setProtectionAuto(ctx, enabled) {
+  if (!(await requireProtectionAdmin(ctx))) return;
+
+  const group =
+    getGroup(ctx.chat.id);
+
+  group.protection.auto =
+    enabled;
+
+  saveData();
+
+  return replyCommand(
+    ctx,
+    `• تم ${enabled ? "تفعيل" : "تعطيل"} الحماية التلقائية`
+  );
+}
+
+const PROTECTION_NAMES = {
+  links: "الروابط",
+  edit: "التعديل",
+  spam: "التكرار والسبام",
+  ads: "الإعلانات",
+  mentions: "المنشن",
+  forwards: "الفوروورد",
+  photos: "الصور",
+  videos: "الفيديو",
+  documents: "الملفات",
+  stickers: "الملصقات",
+  gifs: "GIF",
+  audio: "الصوتيات",
+  commands: "الأوامر",
+  forbiddenWords: "الكلمات الممنوعة",
+  english: "الإنجليزي",
+  contacts: "جهات الاتصال",
+  crossGroupReplies: "الردود من قروبات ثانية"
+};
+
+async function setProtectionOption(ctx, key, enabled) {
+  if (!(await requireProtectionAdmin(ctx))) return;
+
+  const group =
+    getGroup(ctx.chat.id);
+
   if (
-    containsForbiddenWord(
-      text,
-      group
+    !Object.prototype.hasOwnProperty.call(
+      group.protection,
+      key
     )
   ) {
-    await safeDelete(
+    return replyCommand(
       ctx,
-      ctx.message.message_id
+      "• إعداد الحماية غير موجود"
     );
-
-    return true;
   }
 
-  return false;
+  group.protection[key] =
+    enabled;
+
+  if (key === "links") {
+    group.linksEnabled =
+      enabled;
+  }
+
+  saveData();
+
+  return replyCommand(
+    ctx,
+    `• تم ${enabled ? "تفعيل" : "تعطيل"} منع ${PROTECTION_NAMES[key]}`
+  );
+}
+
+async function protectionStatus(ctx) {
+  const group =
+    getGroup(ctx.chat.id);
+
+  const p =
+    group.protection;
+
+  const lines = [
+    "• حالة الحماية",
+    "━━━━━━━━━━━",
+    `• الحماية ↤︎ ${p.enabled ? "مفعلة" : "معطلة"}`,
+    `• الحماية التلقائية ↤︎ ${p.auto ? "مفعلة" : "معطلة"}`,
+    ""
+  ];
+
+  for (const [key, name] of Object.entries(PROTECTION_NAMES)) {
+    lines.push(
+      `• ${name} ↤︎ ${
+        p[key] ? "ممنوع" : "مسموح"
+      }`
+    );
+  }
+
+  return replyCommand(
+    ctx,
+    lines.join("\n")
+  );
+}
+
+async function setViolations(ctx, enabled) {
+  return setProtection(ctx, enabled);
+}
+
+async function setLinks(ctx, enabled) {
+  return setProtectionOption(
+    ctx,
+    "links",
+    enabled
+  );
 }
 
 /* =========================================================
@@ -578,8 +1045,7 @@ async function protection(ctx) {
 function channelUrl(channel) {
   if (!channel) return null;
 
-  const value =
-    String(channel).trim();
+  const value = String(channel).trim();
 
   if (/^https?:\/\//i.test(value)) {
     return value;
@@ -675,7 +1141,6 @@ async function requireLevel(
       ctx,
       `• ${message}`
     );
-
     return false;
   }
 
@@ -730,7 +1195,6 @@ async function resolveTarget(ctx) {
   if (!user) return null;
 
   ensureUser(user);
-
   return user;
 }
 
@@ -868,6 +1332,53 @@ async function unmuteTarget(ctx, global = false) {
       "• ما قدرت أفك الكتم"
     );
   }
+}
+
+/* =========================================================
+   مسح المكتومين
+========================================================= */
+
+async function clearMuted(ctx, global = false) {
+  if (!(await requireLevel(
+    ctx,
+    2,
+    "ما عندك صلاحية"
+  ))) return;
+
+  const group =
+    getGroup(ctx.chat.id);
+
+  const target =
+    global
+      ? group.globalMuted
+      : group.muted;
+
+  const count =
+    Object.keys(target || {}).length;
+
+  if (!count) {
+    return replyCommand(
+      ctx,
+      global
+        ? "• لا يوجد مكتومين عام"
+        : "• لا يوجد مكتومين"
+    );
+  }
+
+  if (global) {
+    group.globalMuted = {};
+  } else {
+    group.muted = {};
+  }
+
+  saveData();
+
+  return replyCommand(
+    ctx,
+    global
+      ? `• تم مسح ( ${count} ) من المكتومين عام`
+      : `• تم مسح ( ${count} ) من المكتومين`
+  );
 }
 
 /* =========================================================
@@ -1146,10 +1657,7 @@ async function setInternalRole(ctx, role) {
   }
 
   ensureUser(target);
-
-  data.users[String(target.id)].role =
-    role;
-
+  data.users[String(target.id)].role = role;
   saveData();
 
   return replyCommand(
@@ -1177,10 +1685,7 @@ async function removeInternalRole(ctx) {
   }
 
   ensureUser(target);
-
-  data.users[String(target.id)].role =
-    "عضو";
-
+  data.users[String(target.id)].role = "عضو";
   saveData();
 
   return replyCommand(
@@ -1457,7 +1962,6 @@ function createWhisper(ctx) {
       ctx,
       "• رد على الرسالة اللي تبي ترسلها همسة"
     );
-
     return null;
   }
 
@@ -1513,7 +2017,6 @@ function createWhisper(ctx) {
   }
 
   whispers.set(id, content);
-
   return id;
 }
 
@@ -1541,9 +2044,7 @@ function getWhisperKeyboard(id) {
 }
 
 async function sendWhisper(ctx) {
-  const id =
-    createWhisper(ctx);
-
+  const id = createWhisper(ctx);
   if (!id) return;
 
   const whisper =
@@ -1664,9 +2165,14 @@ async function startWhisperReply(ctx, id) {
 
 async function getDeveloperProfile(ctx) {
   try {
-    return await ctx.telegram.getChat(
-      `@${DEV_USERNAME}`
-    );
+    const chat =
+      await ctx.telegram.getChat(
+        `@${DEV_USERNAME}`
+      );
+
+    if (chat?.id) {
+      return chat;
+    }
   } catch {}
 
   try {
@@ -1675,11 +2181,14 @@ async function getDeveloperProfile(ctx) {
         ctx.chat.id
       );
 
-    return admins.find(
-      x =>
-        String(x.user.username || "").toLowerCase() ===
-        DEV_USERNAME.toLowerCase()
-    )?.user || null;
+    const found =
+      admins.find(
+        x =>
+          String(x.user.username || "").toLowerCase() ===
+          DEV_USERNAME.toLowerCase()
+      );
+
+    return found?.user || null;
   } catch {
     return null;
   }
@@ -1695,9 +2204,6 @@ async function showOwner(ctx) {
       `• المالك ↤︎ @${DEV_USERNAME}`
     );
   }
-
-  const bio =
-    owner.bio || "ما فيه نبذة";
 
   try {
     const photos =
@@ -1718,16 +2224,21 @@ async function showOwner(ctx) {
         photo.file_id,
         {
           caption:
-            `• المالك ↤︎ ${mention(owner)}\n• المعرف ↤︎ @${DEV_USERNAME}\n• النبذة ↤︎ ${escapeHtml(bio)}`,
+            `• المالك ↤︎ @${DEV_USERNAME}`,
           parse_mode: "HTML"
         }
       );
     }
-  } catch {}
+  } catch (err) {
+    console.error(
+      "owner photo:",
+      err.message
+    );
+  }
 
   return replyCommand(
     ctx,
-    `• المالك ↤︎ ${mention(owner)}\n• المعرف ↤︎ @${DEV_USERNAME}\n• النبذة ↤︎ ${escapeHtml(bio)}`
+    `• المالك ↤︎ @${DEV_USERNAME}`
   );
 }
 
@@ -1796,9 +2307,7 @@ async function joinAhkam(ctx) {
 
   if (!game.players.includes(ctx.from.id)) {
     game.players.push(ctx.from.id);
-
     ensureUser(ctx.from);
-
     saveData();
 
     return replyCommand(
@@ -1843,7 +2352,6 @@ async function finishAhkam(ctx) {
 
   if (players.length < 2) {
     delete games.ahkam;
-
     saveData();
 
     return replyCommand(
@@ -1874,7 +2382,6 @@ async function finishAhkam(ctx) {
   }
 
   delete games.ahkam;
-
   saveData();
 
   return replyCommand(
@@ -1884,13 +2391,7 @@ async function finishAhkam(ctx) {
 }
 
 async function lockGames(ctx) {
-  if (
-    !(await requireLevel(
-      ctx,
-      7,
-      "ما عندك صلاحية"
-    ))
-  ) return;
+  if (!(await requireLevel(ctx, 7, "ما عندك صلاحية"))) return;
 
   const group =
     getGroup(ctx.chat.id);
@@ -1907,13 +2408,7 @@ async function lockGames(ctx) {
 }
 
 async function unlockGames(ctx) {
-  if (
-    !(await requireLevel(
-      ctx,
-      7,
-      "ما عندك صلاحية"
-    ))
-  ) return;
+  if (!(await requireLevel(ctx, 7, "ما عندك صلاحية"))) return;
 
   const group =
     getGroup(ctx.chat.id);
@@ -1933,9 +2428,7 @@ async function unlockGames(ctx) {
 ========================================================= */
 
 function addPoints(userId, amount) {
-  ensureUser({
-    id: userId
-  });
+  ensureUser({ id: userId });
 
   data.users[String(userId)].points =
     (data.users[String(userId)].points || 0) +
@@ -1990,7 +2483,7 @@ async function showTop(ctx) {
 }
 
 /* =========================================================
-   التفاعل - مستقل لكل قروب
+   التفاعل
 ========================================================= */
 
 function registerInteraction(ctx) {
@@ -2086,7 +2579,7 @@ async function showInteractionTop(ctx) {
 }
 
 /* =========================================================
-   تصفير التفاعل - Dev🎖️ فقط
+   تصفير التفاعل
 ========================================================= */
 
 async function resetInteraction(ctx) {
@@ -2111,6 +2604,178 @@ async function resetInteraction(ctx) {
 }
 
 /* =========================================================
+   تنظيف رسائل عضو
+========================================================= */
+
+function trackMessageForCleaning(ctx) {
+  const group =
+    getGroup(ctx.chat.id);
+
+  const userId =
+    String(ctx.from.id);
+
+  group.trackedMessages[userId] ||= [];
+
+  const list =
+    group.trackedMessages[userId];
+
+  if (!list.includes(ctx.message.message_id)) {
+    list.push(ctx.message.message_id);
+  }
+
+  if (list.length > 200) {
+    group.trackedMessages[userId] =
+      list.slice(-200);
+  }
+}
+
+async function cleanMessages(ctx) {
+  if (!(await requireLevel(
+    ctx,
+    2,
+    "ما عندك صلاحية تنظيف"
+  ))) return;
+
+  const target =
+    await resolveTarget(ctx);
+
+  if (!target) {
+    return replyCommand(
+      ctx,
+      "• رد على رسالة العضو أولاً"
+    );
+  }
+
+  ensureUser(target);
+
+  if (
+    getUserLevel(target.id) !== 0
+  ) {
+    return replyCommand(
+      ctx,
+      "• التنظيف للمستخدمين رتبة عضو فقط"
+    );
+  }
+
+  const group =
+    getGroup(ctx.chat.id);
+
+  const parts =
+    normalizeText(
+      ctx.message.text || ""
+    ).split(/\s+/);
+
+  let amount =
+    parseInt(parts[1], 10);
+
+  if (!amount || amount < 1) {
+    amount = 50;
+  }
+
+  amount =
+    Math.min(amount, 100);
+
+  const list =
+    group.trackedMessages[String(target.id)] || [];
+
+  if (!list.length) {
+    return replyCommand(
+      ctx,
+      "• لا توجد رسائل مسجلة لهذا العضو"
+    );
+  }
+
+  const selected =
+    list.slice(-amount);
+
+  let deleted = 0;
+
+  for (const messageId of selected) {
+    try {
+      await ctx.telegram.deleteMessage(
+        ctx.chat.id,
+        messageId
+      );
+      deleted++;
+    } catch {}
+  }
+
+  group.trackedMessages[String(target.id)] =
+    list.filter(
+      id => !selected.includes(id)
+    );
+
+  saveData();
+
+  return replyCommand(
+    ctx,
+    `• تم تنظيف ( ${deleted} ) من رسائل ${mention(target)}`
+  );
+}
+
+/* =========================================================
+   الإحصائيات
+========================================================= */
+
+async function showStats(ctx) {
+  const group =
+    getGroup(ctx.chat.id);
+
+  const users =
+    Object.keys(group.users || {}).length;
+
+  const messages =
+    Object.values(group.users || {})
+      .reduce(
+        (sum, user) =>
+          sum + (user.messages || 0),
+        0
+      );
+
+  const interactions =
+    Object.values(group.interactions || {})
+      .reduce(
+        (sum, user) =>
+          sum + (user.messages || 0),
+        0
+      );
+
+  return replyCommand(
+    ctx,
+    `• إحصائيات القروب\n━━━━━━━━━━━\n• الأعضاء المسجلين ↤︎ ${users}\n• الرسائل ↤︎ ${messages}\n• التفاعل ↤︎ ${interactions}\n• الألعاب ↤︎ ${
+      group.gamesEnabled ? "مفتوحة" : "مقفلة"
+    }\n• الحماية ↤︎ ${
+      group.protection.enabled ? "مفعلة" : "معطلة"
+    }`
+  );
+}
+
+/* =========================================================
+   ردود البوت
+========================================================= */
+
+async function setBotReplies(ctx, enabled) {
+  if (!(await requireLevel(
+    ctx,
+    4,
+    "ما عندك صلاحية"
+  ))) return;
+
+  const group =
+    getGroup(ctx.chat.id);
+
+  group.botReplies =
+    enabled;
+
+  saveData();
+
+  return replyCommand(
+    ctx,
+    `• تم ${enabled ? "فتح" : "قفل"} ردود البوت في القروب`
+  );
+}
+
+/* =========================================================
    البنك
 ========================================================= */
 
@@ -2124,21 +2789,24 @@ async function bankStatus(ctx) {
 
   ensureUser(ctx.from);
 
+  const user =
+    data.users[String(ctx.from.id)];
+
   const money =
-    data.users[String(ctx.from.id)].money || 0;
+    user.money || 0;
+
+  const bank =
+    user.bank || 0;
 
   return replyCommand(
     ctx,
-    `• رصيدك ↤︎ ${money}\n• العملة ↤︎ افتراضية`
+    `• رصيدك ↤︎ ${money}\n• البنك ↤︎ ${bank}\n• العملة ↤︎ افتراضية`
   );
 }
 
 async function depositMoney(ctx) {
   if (!data.botSettings.bankEnabled) {
-    return replyCommand(
-      ctx,
-      "• البنك معطل"
-    );
+    return replyCommand(ctx, "• البنك معطل");
   }
 
   ensureUser(ctx.from);
@@ -2183,10 +2851,7 @@ async function depositMoney(ctx) {
 
 async function withdrawMoney(ctx) {
   if (!data.botSettings.bankEnabled) {
-    return replyCommand(
-      ctx,
-      "• البنك معطل"
-    );
+    return replyCommand(ctx, "• البنك معطل");
   }
 
   ensureUser(ctx.from);
@@ -2217,7 +2882,6 @@ async function withdrawMoney(ctx) {
   }
 
   user.bank -= amount;
-
   user.money =
     (user.money || 0) + amount;
 
@@ -2231,10 +2895,7 @@ async function withdrawMoney(ctx) {
 
 async function transferMoney(ctx) {
   if (!data.botSettings.bankEnabled) {
-    return replyCommand(
-      ctx,
-      "• البنك معطل"
-    );
+    return replyCommand(ctx, "• البنك معطل");
   }
 
   const target =
@@ -2656,12 +3317,9 @@ async function addGroupCommand(ctx) {
       getGroup(ctx.chat.id);
 
     group.id = ctx.chat.id;
-    group.title =
-      ctx.chat.title || "";
-    group.username =
-      ctx.chat.username || "";
-    group.type =
-      ctx.chat.type;
+    group.title = ctx.chat.title || "";
+    group.username = ctx.chat.username || "";
+    group.type = ctx.chat.type;
 
     saveData();
 
@@ -2691,12 +3349,9 @@ async function addGroupCommand(ctx) {
       getGroup(chat.id);
 
     group.id = chat.id;
-    group.title =
-      chat.title || "";
-    group.username =
-      chat.username || "";
-    group.type =
-      chat.type;
+    group.title = chat.title || "";
+    group.username = chat.username || "";
+    group.type = chat.type;
 
     saveData();
 
@@ -2737,7 +3392,6 @@ async function deleteGroupCommand(ctx) {
   }
 
   delete data.groups[String(id)];
-
   saveData();
 
   return replyCommand(
@@ -3026,9 +3680,7 @@ async function deleteGroupData(ctx) {
     );
   }
 
-  delete data.groups[
-    String(ctx.chat.id)
-  ];
+  delete data.groups[String(ctx.chat.id)];
 
   saveData();
 
@@ -3102,6 +3754,8 @@ async function showCommands(ctx) {
     "• فك الكتم",
     "• كتم عام",
     "• فك الكتم العام",
+    "• مسح المكتومين",
+    "• مسح المكتومين عام",
     "• حظر",
     "• فك الحظر",
     "• طرد",
@@ -3110,6 +3764,11 @@ async function showCommands(ctx) {
     "• تنظيف",
     "• فتح المخالفات",
     "• قفل المخالفات",
+    "• حالة الحماية",
+    "• تفعيل الحماية",
+    "• تعطيل الحماية",
+    "• تفعيل الحماية التلقائية",
+    "• تعطيل الحماية التلقائية",
     "• فتح الروابط",
     "• قفل الروابط",
     "• احكام",
@@ -3135,6 +3794,8 @@ async function showCommands(ctx) {
   }
 
   const devCommands = [
+    ...normal,
+    "",
     "• أوامر Dev🎖️",
     "━━━━━━━━━━━━━━━━",
     "• تفعيل البوت",
@@ -3198,7 +3859,6 @@ async function showCommands(ctx) {
 
 bot.start(async ctx => {
   ensureUser(ctx.from);
-
   saveData();
 
   const payload =
@@ -3235,7 +3895,7 @@ bot.start(async ctx => {
 });
 
 /* =========================================================
-   Callback الاشتراك
+   Callback
 ========================================================= */
 
 bot.on("callback_query", async ctx => {
@@ -3282,7 +3942,6 @@ bot.on("callback_query", async ctx => {
         "انتهى الأمر"
       );
     } catch {}
-
     return;
   }
 
@@ -3295,7 +3954,6 @@ bot.on("callback_query", async ctx => {
         "هذا الأمر مو لك"
       );
     } catch {}
-
     return;
   }
 
@@ -3305,7 +3963,6 @@ bot.on("callback_query", async ctx => {
         "فقط Dev🎖️ يقدر يستخدمه"
       );
     } catch {}
-
     return;
   }
 
@@ -3358,7 +4015,6 @@ bot.on("callback_query", async ctx => {
         await ctx.answerCbQuery(
           "البوت ما عنده صلاحية"
         );
-
         return;
       }
 
@@ -3375,7 +4031,6 @@ bot.on("callback_query", async ctx => {
         await ctx.answerCbQuery(
           "ما تقدر ترفع المالك"
         );
-
         return;
       }
 
@@ -3386,7 +4041,6 @@ bot.on("callback_query", async ctx => {
         await ctx.answerCbQuery(
           "المستخدم مشرف بالفعل"
         );
-
         return;
       }
 
@@ -3457,7 +4111,6 @@ bot.on("message", async ctx => {
 
   ensureUser(ctx.from);
 
-  /* الرسائل الخاصة */
   if (ctx.chat?.type === "private") {
     return;
   }
@@ -3465,23 +4118,13 @@ bot.on("message", async ctx => {
   const group =
     getGroup(ctx.chat.id);
 
-  group.id =
-    ctx.chat.id;
-
+  group.id = ctx.chat.id;
   group.title =
-    ctx.chat.title ||
-    group.title ||
-    "";
-
+    ctx.chat.title || group.title || "";
   group.username =
-    ctx.chat.username ||
-    group.username ||
-    "";
-
+    ctx.chat.username || group.username || "";
   group.type =
-    ctx.chat.type ||
-    group.type ||
-    "";
+    ctx.chat.type || group.type || "";
 
   const user =
     data.users[String(ctx.from.id)];
@@ -3505,12 +4148,13 @@ bot.on("message", async ctx => {
 
   registerInteraction(ctx);
 
+  trackMessageForCleaning(ctx);
+
   data.botSettings.messages =
     (data.botSettings.messages || 0) + 1;
 
   saveData();
 
-  /* Dev يقدر يستخدم أوامر التحكم حتى لو البوت معطل */
   const text =
     ctx.message.text || "";
 
@@ -3524,10 +4168,6 @@ bot.on("message", async ctx => {
     return;
   }
 
-  /*
-   * الحماية:
-   * تعمل فقط على رتبة عضو
-   */
   if (
     await protection(ctx)
   ) {
@@ -3536,20 +4176,13 @@ bot.on("message", async ctx => {
 
   if (!clean) return;
 
-  const lower =
-    clean.toLowerCase();
-
   /* الهمسة */
-  if (
-    /^(اهمس|همسه|همسة|ه)$/i.test(clean)
-  ) {
+  if (/^(اهمس|همسه|همسة|ه)$/i.test(clean)) {
     return sendWhisper(ctx);
   }
 
   /* المالك */
-  if (
-    /^(المالك|مالك البوت)$/i.test(clean)
-  ) {
+  if (/^(المالك|مالك البوت)$/i.test(clean)) {
     return showOwner(ctx);
   }
 
@@ -3567,9 +4200,7 @@ bot.on("message", async ctx => {
     return promoteTarget(ctx);
   }
 
-  if (
-    /^(تنزيل مشرف|تنزيل المشرف)$/i.test(clean)
-  ) {
+  if (/^(تنزيل مشرف|تنزيل المشرف)$/i.test(clean)) {
     return demoteTarget(ctx);
   }
 
@@ -3578,180 +4209,184 @@ bot.on("message", async ctx => {
     return muteTarget(ctx, false);
   }
 
-  if (
-    /^(فك الكتم|الغاء الكتم|إلغاء الكتم)$/i.test(clean)
-  ) {
+  if (/^(فك الكتم|الغاء الكتم|إلغاء الكتم)$/i.test(clean)) {
     return unmuteTarget(ctx, false);
   }
 
-  if (
-    /^(كتم عام|الكتم العام)$/i.test(clean)
-  ) {
+  if (/^(كتم عام|الكتم العام)$/i.test(clean)) {
     return muteTarget(ctx, true);
   }
 
-  if (
-    /^(فك الكتم العام|الغاء الكتم العام|إلغاء الكتم العام)$/i.test(clean)
-  ) {
+  if (/^(فك الكتم العام|الغاء الكتم العام|إلغاء الكتم العام)$/i.test(clean)) {
     return unmuteTarget(ctx, true);
   }
 
+  /* مسح المكتومين */
+  if (/^(مسح المكتومين|مم)$/i.test(clean)) {
+    return clearMuted(ctx, false);
+  }
+
+  if (/^(مسح المكتومين عام|خخ)$/i.test(clean)) {
+    return clearMuted(ctx, true);
+  }
+
   /* الحظر */
-  if (
-    /^(حظر|بلوك)$/i.test(clean)
-  ) {
+  if (/^(حظر|بلوك)$/i.test(clean)) {
     return banTarget(ctx);
   }
 
-  if (
-    /^(فك حظر|فك الحظر|الغاء الحظر)$/i.test(clean)
-  ) {
+  if (/^(فك حظر|فك الحظر|الغاء الحظر)$/i.test(clean)) {
     return unbanTarget(ctx);
   }
 
   /* الطرد */
-  if (
-    /^(طرد|اطرد)$/i.test(clean)
-  ) {
+  if (/^(طرد|اطرد)$/i.test(clean)) {
     return kickTarget(ctx);
   }
 
   /* التقييد */
-  if (
-    /^(تقييد|قيد)$/i.test(clean)
-  ) {
+  if (/^(تقييد|قيد)$/i.test(clean)) {
     return restrictTarget(ctx);
   }
 
-  if (
-    /^(الغاء التقييد|إلغاء التقييد|فك التقييد)$/i.test(clean)
-  ) {
+  if (/^(الغاء التقييد|إلغاء التقييد|فك التقييد)$/i.test(clean)) {
     return unrestrictTarget(ctx);
   }
 
   /* التنظيف */
-  if (
-    /^(تنظيف|مسح)(\s+\d+)?$/i.test(clean)
-  ) {
+  if (/^(تنظيف|مسح)(\s+\d+)?$/i.test(clean)) {
     return cleanMessages(ctx);
   }
 
+  /* الحماية */
+  if (/^تفعيل الحماية$/i.test(clean)) {
+    return setProtection(ctx, true);
+  }
+
+  if (/^تعطيل الحماية$/i.test(clean)) {
+    return setProtection(ctx, false);
+  }
+
+  if (/^حالة الحماية$/i.test(clean)) {
+    return protectionStatus(ctx);
+  }
+
+  if (/^تفعيل الحماية التلقائية$/i.test(clean)) {
+    return setProtectionAuto(ctx, true);
+  }
+
+  if (/^تعطيل الحماية التلقائية$/i.test(clean)) {
+    return setProtectionAuto(ctx, false);
+  }
+
   /* المخالفات */
-  if (
-    /^(فتح المخالفات|فتح مخالفات)$/i.test(clean)
-  ) {
+  if (/^(فتح المخالفات|فتح مخالفات)$/i.test(clean)) {
     return setViolations(ctx, true);
   }
 
-  if (
-    /^(قفل المخالفات|قفل مخالفات)$/i.test(clean)
-  ) {
+  if (/^(قفل المخالفات|قفل مخالفات)$/i.test(clean)) {
     return setViolations(ctx, false);
   }
 
-  if (
-    /^(فتح الروابط|فتح روابط)$/i.test(clean)
-  ) {
+  if (/^(فتح الروابط|فتح روابط)$/i.test(clean)) {
     return setLinks(ctx, true);
   }
 
-  if (
-    /^(قفل الروابط|قفل روابط)$/i.test(clean)
-  ) {
+  if (/^(قفل الروابط|قفل روابط)$/i.test(clean)) {
     return setLinks(ctx, false);
   }
 
+  /* إعدادات الحماية التفصيلية */
+  const protectionCommands = [
+    ["منع التعديل", "edit"],
+    ["السماح بالتعديل", "edit"],
+    ["منع السبام", "spam"],
+    ["السماح بالسبام", "spam"],
+    ["منع التكرار", "spam"],
+    ["السماح بالتكرار", "spam"],
+    ["منع الإعلانات", "ads"],
+    ["السماح بالإعلانات", "ads"],
+    ["منع المنشن", "mentions"],
+    ["السماح بالمنشن", "mentions"],
+    ["منع الفوروورد", "forwards"],
+    ["السماح بالفوروورد", "forwards"],
+    ["منع الصور", "photos"],
+    ["السماح بالصور", "photos"],
+    ["منع الفيديو", "videos"],
+    ["السماح بالفيديو", "videos"],
+    ["منع الملفات", "documents"],
+    ["السماح بالملفات", "documents"],
+    ["منع الملصقات", "stickers"],
+    ["السماح بالملصقات", "stickers"],
+    ["منع GIF", "gifs"],
+    ["السماح بـ GIF", "gifs"],
+    ["منع الصوتيات", "audio"],
+    ["السماح بالصوتيات", "audio"],
+    ["منع الأوامر", "commands"],
+    ["السماح بالأوامر", "commands"],
+    ["منع الإنجليزي", "english"],
+    ["السماح بالإنجليزي", "english"],
+    ["منع جهات الاتصال", "contacts"],
+    ["السماح بجهات الاتصال", "contacts"],
+    ["منع الردود من قروبات ثانية", "crossGroupReplies"],
+    ["السماح بالردود من قروبات ثانية", "crossGroupReplies"]
+  ];
+
+  for (const [command, key] of protectionCommands) {
+    if (clean === command) {
+      const enabled =
+        command.startsWith("منع");
+
+      return setProtectionOption(
+        ctx,
+        key,
+        enabled
+      );
+    }
+  }
+
   /* الرتب */
-  if (
-    /^(رفع|ترقية)\s+مميز$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "مميز"
-    );
+  if (/^(رفع|ترقية)\s+مميز$/i.test(clean))
+    return setInternalRole(ctx, "مميز");
 
-  if (
-    /^(رفع|ترقية)\s+مالك$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "مالك"
-    );
+  if (/^(رفع|ترقية)\s+مالك$/i.test(clean))
+    return setInternalRole(ctx, "مالك");
 
-  if (
-    /^(رفع|ترقية)\s+مالك\s+أساسي$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "مالك أساسي"
-    );
+  if (/^(رفع|ترقية)\s+مالك\s+أساسي$/i.test(clean))
+    return setInternalRole(ctx, "مالك أساسي");
 
-  if (
-    /^(رفع|ترقية)\s+Myth$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "Myth"
-    );
+  if (/^(رفع|ترقية)\s+Myth$/i.test(clean))
+    return setInternalRole(ctx, "Myth");
 
-  if (
-    /^(رفع|ترقية)\s+Myth🎖️$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "Myth🎖️"
-    );
+  if (/^(رفع|ترقية)\s+Myth🎖️$/i.test(clean))
+    return setInternalRole(ctx, "Myth🎖️");
 
-  if (
-    /^(رفع|ترقية)\s+Dev²🎖️$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "Dev²🎖️"
-    );
+  if (/^(رفع|ترقية)\s+Dev²🎖️$/i.test(clean))
+    return setInternalRole(ctx, "Dev²🎖️");
 
-  if (
-    /^(رفع|ترقية)\s+Dev🎖️$/i.test(clean)
-  )
-    return setInternalRole(
-      ctx,
-      "Dev🎖️"
-    );
+  if (/^(رفع|ترقية)\s+Dev🎖️$/i.test(clean))
+    return setInternalRole(ctx, "Dev🎖️");
 
-  if (
-    /^(تنزيل|خفض|نزول)$/i.test(clean)
-  )
+  if (/^(تنزيل|خفض|نزول)$/i.test(clean))
     return removeInternalRole(ctx);
 
   /* الألعاب */
-  if (
-    /^(احكام|أحكام)$/i.test(clean)
-  )
+  if (/^(احكام|أحكام)$/i.test(clean))
     return startAhkam(ctx);
 
-  if (
-    /^(أنا|انا)$/i.test(clean)
-  )
+  if (/^(أنا|انا)$/i.test(clean))
     return joinAhkam(ctx);
 
-  if (
-    /^(انهاء احكام|إنهاء احكام|انهاء أحكام|إنهاء أحكام)$/i.test(clean)
-  )
+  if (/^(انهاء احكام|إنهاء احكام|انهاء أحكام|إنهاء أحكام)$/i.test(clean))
     return finishAhkam(ctx);
 
-  if (
-    /^(قفل الالعاب|قفل الألعاب)$/i.test(clean)
-  )
+  if (/^(قفل الالعاب|قفل الألعاب)$/i.test(clean))
     return lockGames(ctx);
 
-  if (
-    /^(فتح الالعاب|فتح الألعاب)$/i.test(clean)
-  )
+  if (/^(فتح الالعاب|فتح الألعاب)$/i.test(clean))
     return unlockGames(ctx);
 
-  if (
-    /^(الالعاب|الألعاب)$/i.test(clean)
-  )
+  if (/^(الالعاب|الألعاب)$/i.test(clean))
     return replyCommand(
       ctx,
       `• الألعاب ↤︎ ${
@@ -3762,20 +4397,14 @@ bot.on("message", async ctx => {
     );
 
   /* النقاط */
-  if (
-    /^(نقاطي|نقاط)$/i.test(clean)
-  )
+  if (/^(نقاطي|نقاط)$/i.test(clean))
     return showPoints(ctx);
 
-  if (
-    /^(المتصدرين|المتصدرون|توب)$/i.test(clean)
-  )
+  if (/^(المتصدرين|المتصدرون|توب)$/i.test(clean))
     return showTop(ctx);
 
   /* التفاعل */
-  if (
-    /^تصفير التفاعل$/i.test(clean)
-  ) {
+  if (/^تصفير التفاعل$/i.test(clean)) {
     return resetInteraction(ctx);
   }
 
@@ -3786,225 +4415,144 @@ bot.on("message", async ctx => {
   }
 
   /* الإحصائيات */
-  if (
-    /^(احصائيات|إحصائيات|الاحصائيات|الإحصائيات)$/i.test(clean)
-  )
+  if (/^(احصائيات|إحصائيات|الاحصائيات|الإحصائيات)$/i.test(clean))
     return showStats(ctx);
 
   /* الردود */
-  if (
-    /^(فتح الردود|فتح ردود البوت)$/i.test(clean)
-  )
+  if (/^(فتح الردود|فتح ردود البوت)$/i.test(clean))
     return setBotReplies(ctx, true);
 
-  if (
-    /^(قفل الردود|قفل ردود البوت)$/i.test(clean)
-  )
+  if (/^(قفل الردود|قفل ردود البوت)$/i.test(clean))
     return setBotReplies(ctx, false);
 
   /* البنك */
-  if (
-    /^(رصيدي|فلوسي|البنك)$/i.test(clean)
-  )
+  if (/^(رصيدي|فلوسي|البنك)$/i.test(clean))
     return bankStatus(ctx);
 
-  if (
-    /^ايداع\s+\d+$/i.test(clean)
-  )
+  if (/^ايداع\s+\d+$/i.test(clean))
     return depositMoney(ctx);
 
-  if (
-    /^سحب\s+\d+$/i.test(clean)
-  )
+  if (/^سحب\s+\d+$/i.test(clean))
     return withdrawMoney(ctx);
 
-  if (
-    /^تحويل\s+\d+$/i.test(clean)
-  )
+  if (/^تحويل\s+\d+$/i.test(clean))
     return transferMoney(ctx);
 
   /* =====================================================
      أوامر Dev
   ===================================================== */
 
-  if (
-    /^تفعيل البوت$/i.test(clean)
-  )
+  if (/^تفعيل البوت$/i.test(clean))
     return toggleBot(ctx, true);
 
-  if (
-    /^تعطيل البوت$/i.test(clean)
-  )
+  if (/^تعطيل البوت$/i.test(clean))
     return toggleBot(ctx, false);
 
-  if (
-    /^تحديث البوت$/i.test(clean)
-  )
+  if (/^تحديث البوت$/i.test(clean))
     return restartBot(ctx, true);
 
-  if (
-    /^(اعادة تشغيل البوت|إعادة تشغيل البوت)$/i.test(clean)
-  )
+  if (/^(اعادة تشغيل البوت|إعادة تشغيل البوت)$/i.test(clean))
     return restartBot(ctx, false);
 
-  if (
-    /^حالة البوت$/i.test(clean)
-  )
+  if (/^حالة البوت$/i.test(clean))
     return botStatus(ctx);
 
-  if (
-    /^احصائيات البوت$/i.test(clean)
-  )
+  if (/^احصائيات البوت$/i.test(clean))
     return botStatistics(ctx);
 
-  if (
-    /^سجل البوت$/i.test(clean)
-  )
+  if (/^سجل البوت$/i.test(clean))
     return botLogs(ctx);
 
-  if (
-    /^تنظيف بيانات القروب$/i.test(clean)
-  )
+  if (/^تنظيف بيانات القروب$/i.test(clean))
     return cleanGroupData(ctx);
 
-  if (
-    /^مسح بيانات القروب$/i.test(clean)
-  )
+  if (/^مسح بيانات القروب$/i.test(clean))
     return deleteGroupData(ctx);
 
-  if (
-    /^تعيين عدد الأعضاء\s+\d+$/i.test(clean)
-  )
+  if (/^تصفير التفاعل$/i.test(clean))
+    return resetInteraction(ctx);
+
+  if (/^تعيين عدد الأعضاء\s+\d+$/i.test(clean))
     return setMemberTarget(ctx);
 
-  if (
-    /^تفعيل الردود$/i.test(clean)
-  )
+  if (/^تفعيل الردود$/i.test(clean))
     return setGlobalReplies(ctx, true);
 
-  if (
-    /^تعطيل الردود$/i.test(clean)
-  )
+  if (/^تعطيل الردود$/i.test(clean))
     return setGlobalReplies(ctx, false);
 
-  if (
-    /^تفعيل البنك$/i.test(clean)
-  )
+  if (/^تفعيل البنك$/i.test(clean))
     return setBank(ctx, true);
 
-  if (
-    /^تعطيل البنك$/i.test(clean)
-  )
+  if (/^تعطيل البنك$/i.test(clean))
     return setBank(ctx, false);
 
-  if (
-    /^تفعيل التواصل$/i.test(clean)
-  )
+  if (/^تفعيل التواصل$/i.test(clean))
     return setCommunication(ctx, true);
 
-  if (
-    /^تعطيل التواصل$/i.test(clean)
-  )
+  if (/^تعطيل التواصل$/i.test(clean))
     return setCommunication(ctx, false);
 
-  if (
-    /^تفعيل الاشتراك الاجباري$/i.test(clean)
-  )
+  if (/^تفعيل الاشتراك الاجباري$/i.test(clean))
     return setMandatorySubscription(ctx, true);
 
-  if (
-    /^تعطيل الاشتراك الاجباري$/i.test(clean)
-  )
+  if (/^تعطيل الاشتراك الاجباري$/i.test(clean))
     return setMandatorySubscription(ctx, false);
 
-  if (
-    /^تفعيل بوت الخدمة$/i.test(clean)
-  )
+  if (/^تفعيل بوت الخدمة$/i.test(clean))
     return setServiceBot(ctx, true);
 
-  if (
-    /^تعطيل بوت الخدمة$/i.test(clean)
-  )
+  if (/^تعطيل بوت الخدمة$/i.test(clean))
     return setServiceBot(ctx, false);
 
-  if (
-    /^تفعيل الزاجل$/i.test(clean)
-  )
+  if (/^تفعيل الزاجل$/i.test(clean))
     return setZajel(ctx, true);
 
-  if (
-    /^تعطيل الزاجل$/i.test(clean)
-  )
+  if (/^تعطيل الزاجل$/i.test(clean))
     return setZajel(ctx, false);
 
-  if (
-    /^تفعيل التنسيقات$/i.test(clean)
-  )
+  if (/^تفعيل التنسيقات$/i.test(clean))
     return setFormats(ctx, true);
 
-  if (
-    /^تعطيل التنسيقات$/i.test(clean)
-  )
+  if (/^تعطيل التنسيقات$/i.test(clean))
     return setFormats(ctx, false);
 
-  if (
-    /^اضافة قروب$/i.test(clean)
-  )
+  if (/^اضافة قروب$/i.test(clean))
     return addGroupCommand(ctx);
 
-  if (
-    /^حذف قروب$/i.test(clean)
-  )
+  if (/^حذف قروب$/i.test(clean))
     return deleteGroupCommand(ctx);
 
-  if (
-    /^(قائمة القروبات|القروبات)$/i.test(clean)
-  )
+  if (/^(قائمة القروبات|القروبات)$/i.test(clean))
     return listGroups(ctx);
 
-  if (
-    /^اضافة قناة\s+/i.test(clean)
-  )
+  if (/^اضافة قناة\s+/i.test(clean))
     return addChannel(ctx);
 
-  if (
-    /^حذف قناة\s+/i.test(clean)
-  )
+  if (/^حذف قناة\s+/i.test(clean))
     return deleteChannel(ctx);
 
-  if (
-    /^(قائمة القنوات|القنوات)$/i.test(clean)
-  )
+  if (/^(قائمة القنوات|القنوات)$/i.test(clean))
     return listChannels(ctx);
 
-  if (
-    /^تعيين قناة السجل\s+/i.test(clean)
-  )
+  if (/^تعيين قناة السجل\s+/i.test(clean))
     return setLogChannel(ctx);
 
-  if (
-    /^تعيين قناة الاشتراك\s+/i.test(clean)
-  )
+  if (/^تعيين قناة الاشتراك\s+/i.test(clean))
     return setSubscriptionChannel(ctx);
 
-  if (
-    /^(حالة إعدادات Dev|اعدادات Dev|إعدادات Dev)$/i.test(clean)
-  )
+  if (/^(حالة إعدادات Dev|اعدادات Dev|إعدادات Dev)$/i.test(clean))
     return devSettingsStatus(ctx);
 
   /* الرتبة */
-  if (
-    /^(رتبتي|رتبتي؟)$/i.test(clean)
-  ) {
+  if (/^(رتبتي|رتبتي؟)$/i.test(clean)) {
     return replyCommand(
       ctx,
       `• رتبتك ↤︎ ${getRoleName(ctx.from.id)}`
     );
   }
 
-  if (
-    /^(ايدي|آيدي|id)$/i.test(clean)
-  ) {
+  if (/^(ايدي|آيدي|id)$/i.test(clean)) {
     return replyCommand(
       ctx,
       `• ايديك ↤︎ <code>${ctx.from.id}</code>`
@@ -4019,10 +4567,7 @@ bot.on("message", async ctx => {
   }
 
   /* أوامر مخصصة */
-  if (
-    data.botSettings.repliesEnabled &&
-    group.botReplies
-  ) {
+  if (data.botSettings.repliesEnabled && group.botReplies) {
     const custom =
       group.customCommands[clean];
 
@@ -4192,15 +4737,11 @@ bot.on("my_chat_member", async ctx => {
       const group =
         getGroup(chat.id);
 
-      group.id =
-        chat.id;
-
+      group.id = chat.id;
       group.title =
         chat.title || "";
-
       group.username =
         chat.username || "";
-
       group.type =
         chat.type;
 
