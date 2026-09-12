@@ -4,7 +4,7 @@ const path = require("path");
 const ytSearch = require("yt-search");
 
 /* =========================================================
-   الإعدادات
+   إعدادات
 ========================================================= */
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -19,6 +19,62 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 
 const DATA_FILE = path.join(__dirname, "data.json");
+
+/* =========================================================
+   يوتيوب
+========================================================= */
+
+let youtubeClientPromise = null;
+
+async function getYoutubeClient() {
+  if (!youtubeClientPromise) {
+    youtubeClientPromise = import("youtubei.js")
+      .then(({ Innertube }) => Innertube.create());
+  }
+
+  return youtubeClientPromise;
+}
+
+async function downloadYoutubeAudio(videoId) {
+  const youtube = await getYoutubeClient();
+
+  const stream = await youtube.download(videoId, {
+    type: "audio",
+    quality: "best"
+  });
+
+  const chunks = [];
+
+  if (
+    stream &&
+    typeof stream.getReader === "function"
+  ) {
+    const reader = stream.getReader();
+
+    while (true) {
+      const { done, value } =
+        await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      if (value) {
+        chunks.push(
+          Buffer.from(value)
+        );
+      }
+    }
+  } else {
+    for await (const chunk of stream) {
+      chunks.push(
+        Buffer.from(chunk)
+      );
+    }
+  }
+
+  return Buffer.concat(chunks);
+}
 
 /* =========================================================
    الرتب
@@ -66,7 +122,7 @@ const DEFAULT_PROTECTION = {
 };
 
 /* =========================================================
-   إعدادات القروب الافتراضية
+   إعدادات القروب
 ========================================================= */
 
 const DEFAULT_GROUP = {
@@ -127,11 +183,18 @@ let db = {};
 try {
   if (fs.existsSync(DATA_FILE)) {
     db = JSON.parse(
-      fs.readFileSync(DATA_FILE, "utf8")
+      fs.readFileSync(
+        DATA_FILE,
+        "utf8"
+      )
     );
   }
 } catch (error) {
-  console.error("تعذر تحميل البيانات:", error.message);
+  console.error(
+    "تعذر تحميل البيانات:",
+    error.message
+  );
+
   db = {};
 }
 
@@ -143,30 +206,44 @@ function save() {
   try {
     fs.writeFileSync(
       DATA_FILE,
-      JSON.stringify(db, null, 2),
+      JSON.stringify(
+        db,
+        null,
+        2
+      ),
       "utf8"
     );
   } catch (error) {
-    console.error("تعذر حفظ البيانات:", error.message);
+    console.error(
+      "تعذر حفظ البيانات:",
+      error.message
+    );
   }
 }
 
-setInterval(save, 15000);
+setInterval(
+  save,
+  15000
+);
 
 /* =========================================================
    إنشاء بيانات القروب
 ========================================================= */
 
 function ensureGroup(chatId) {
-  const id = String(chatId);
+  const id =
+    String(chatId);
 
   if (!db[id]) {
     db[id] = JSON.parse(
-      JSON.stringify(DEFAULT_GROUP)
+      JSON.stringify(
+        DEFAULT_GROUP
+      )
     );
   }
 
-  const group = db[id];
+  const group =
+    db[id];
 
   group.settings ||= {};
   group.protection ||= {};
@@ -193,19 +270,37 @@ function ensureGroup(chatId) {
   group.pendingWhispers ||= {};
   group.whispers ||= {};
 
-  for (const [key, value] of Object.entries(
-    DEFAULT_GROUP.settings
-  )) {
-    if (group.settings[key] === undefined) {
-      group.settings[key] = value;
+  for (
+    const [
+      key,
+      value
+    ] of Object.entries(
+      DEFAULT_GROUP.settings
+    )
+  ) {
+    if (
+      group.settings[key] ===
+      undefined
+    ) {
+      group.settings[key] =
+        value;
     }
   }
 
-  for (const [key, value] of Object.entries(
-    DEFAULT_PROTECTION
-  )) {
-    if (group.protection[key] === undefined) {
-      group.protection[key] = value;
+  for (
+    const [
+      key,
+      value
+    ] of Object.entries(
+      DEFAULT_PROTECTION
+    )
+  ) {
+    if (
+      group.protection[key] ===
+      undefined
+    ) {
+      group.protection[key] =
+        value;
     }
   }
 
@@ -216,22 +311,43 @@ function ensureGroup(chatId) {
    أدوات عامة
 ========================================================= */
 
-function escapeHtml(text = "") {
+function escapeHtml(
+  text = ""
+) {
   return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    );
 }
 
-function normalize(text = "") {
+function normalize(
+  text = ""
+) {
   return String(text)
     .toLowerCase()
-    .replace(/\s+/g, " ")
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
-function getText(message) {
+function getText(
+  message
+) {
   return (
     message?.text ||
     message?.caption ||
@@ -239,7 +355,9 @@ function getText(message) {
   );
 }
 
-function mention(user) {
+function mention(
+  user
+) {
   if (!user) {
     return "المستخدم";
   }
@@ -258,57 +376,123 @@ function mention(user) {
   )}</a>`;
 }
 
-function status(value) {
+function status(
+  value
+) {
   return value
     ? "مفعل ✅"
     : "معطل ❌";
 }
 
 /* =========================================================
+   المطور
+========================================================= */
+
+function isDeveloperUser(
+  user
+) {
+  return !!(
+    user?.username &&
+    user.username.toLowerCase() ===
+      DEV_USERNAME.toLowerCase()
+  );
+}
+
+/* =========================================================
    الرتب
 ========================================================= */
 
-function roleOf(userId) {
-  let highest = "عضو";
-  let highestLevel = 0;
+function roleOf(
+  userId
+) {
+  let highest =
+    "عضو";
 
-  for (const group of Object.values(db)) {
+  let highestLevel =
+    0;
+
+  for (
+    const group of Object.values(
+      db
+    )
+  ) {
     const user =
-      group.users?.[String(userId)];
+      group.users?.[
+        String(userId)
+      ];
 
-    if (!user) continue;
+    if (!user) {
+      continue;
+    }
 
-    const role = user.role || "عضو";
-    const level = ROLES[role] ?? 0;
+    if (
+      user.username &&
+      user.username.toLowerCase() ===
+        DEV_USERNAME.toLowerCase()
+    ) {
+      return "Dev🎖️";
+    }
 
-    if (level > highestLevel) {
-      highestLevel = level;
-      highest = role;
+    const role =
+      user.role ||
+      "عضو";
+
+    const level =
+      ROLES[role] ??
+      0;
+
+    if (
+      level >
+      highestLevel
+    ) {
+      highestLevel =
+        level;
+
+      highest =
+        role;
     }
   }
 
   return highest;
 }
 
-function levelOf(userId) {
-  return ROLES[roleOf(userId)] ?? 0;
+function levelOf(
+  userId
+) {
+  return (
+    ROLES[
+      roleOf(userId)
+    ] ?? 0
+  );
 }
 
-function setUser(group, user, role = null) {
-  const id = String(user.id);
+function setUser(
+  group,
+  user,
+  role = null
+) {
+  const id =
+    String(user.id);
 
   if (!group.users[id]) {
     group.users[id] = {
       id: user.id,
 
       username:
-        user.username || "",
+        user.username ||
+        "",
 
       name:
-        user.first_name || "",
+        user.first_name ||
+        "",
 
       role:
-        role || "عضو",
+        role ||
+        (
+          isDeveloperUser(user)
+            ? "Dev🎖️"
+            : "عضو"
+        ),
 
       messages: 0,
 
@@ -320,18 +504,30 @@ function setUser(group, user, role = null) {
     };
   }
 
-  group.users[id].username =
+  group.users[id]
+    .username =
     user.username ||
-    group.users[id].username ||
+    group.users[id]
+      .username ||
     "";
 
-  group.users[id].name =
+  group.users[id]
+    .name =
     user.first_name ||
-    group.users[id].name ||
+    group.users[id]
+      .name ||
     "";
 
-  if (role) {
-    group.users[id].role = role;
+  if (
+    isDeveloperUser(user)
+  ) {
+    group.users[id]
+      .role =
+      "Dev🎖️";
+  } else if (role) {
+    group.users[id]
+      .role =
+      role;
   }
 
   return group.users[id];
@@ -341,7 +537,9 @@ function setUser(group, user, role = null) {
    صلاحيات تيليجرام
 ========================================================= */
 
-async function getAdmins(ctx) {
+async function getAdmins(
+  ctx
+) {
   try {
     return await ctx.telegram.getChatAdministrators(
       ctx.chat.id
@@ -353,30 +551,42 @@ async function getAdmins(ctx) {
 
 async function isTelegramAdmin(
   ctx,
-  userId = ctx.from?.id
+  userId =
+    ctx.from?.id
 ) {
-  const admins = await getAdmins(ctx);
+  const admins =
+    await getAdmins(
+      ctx
+    );
 
   return admins.some(
     admin =>
-      admin.user.id === userId
+      admin.user.id ===
+      userId
   );
 }
 
 async function isOwner(
   ctx,
-  userId = ctx.from?.id
+  userId =
+    ctx.from?.id
 ) {
-  const admins = await getAdmins(ctx);
+  const admins =
+    await getAdmins(
+      ctx
+    );
 
-  const creator = admins.find(
-    admin =>
-      admin.status === "creator"
-  );
+  const creator =
+    admins.find(
+      admin =>
+        admin.status ===
+        "creator"
+    );
 
   if (
     creator &&
-    creator.user.id === userId
+    creator.user.id ===
+      userId
   ) {
     return true;
   }
@@ -398,7 +608,8 @@ async function canManage(
 ) {
   if (
     !ctx.chat ||
-    ctx.chat.type === "private"
+    ctx.chat.type ===
+      "private"
   ) {
     return false;
   }
@@ -410,24 +621,51 @@ async function canManage(
   }
 
   return (
-    levelOf(ctx.from.id) >=
+    levelOf(
+      ctx.from.id
+    ) >=
     requiredLevel
   );
 }
 
+/* =========================================================
+   حماية المطور والمالك من الاستهداف
+========================================================= */
+
 async function canTarget(
   ctx,
-  targetId
+  targetId,
+  targetUser = null
 ) {
   if (
     String(targetId) ===
-    String(ctx.botInfo?.id)
+    String(
+      ctx.botInfo?.id
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    targetId ===
+    ctx.from.id
+  ) {
+    return false;
+  }
+
+  if (
+    targetUser &&
+    isDeveloperUser(
+      targetUser
+    )
   ) {
     return false;
   }
 
   const admins =
-    await getAdmins(ctx);
+    await getAdmins(
+      ctx
+    );
 
   const targetAdmin =
     admins.find(
@@ -448,20 +686,17 @@ async function canTarget(
     return false;
   }
 
-  if (
-    targetId === ctx.from.id
-  ) {
-    return false;
-  }
-
   return true;
 }
 
-function targetFromReply(ctx) {
+function targetFromReply(
+  ctx
+) {
   return (
     ctx.message
       ?.reply_to_message
-      ?.from || null
+      ?.from ||
+    null
   );
 }
 
@@ -469,36 +704,54 @@ function targetFromReply(ctx) {
    أنواع الرسائل
 ========================================================= */
 
-function mediaReason(message) {
-  if (message?.sticker) {
+function mediaReason(
+  message
+) {
+  if (
+    message?.sticker
+  ) {
     return "ملصقات";
   }
 
-  if (message?.photo) {
+  if (
+    message?.photo
+  ) {
     return "صور";
   }
 
-  if (message?.video) {
+  if (
+    message?.video
+  ) {
     return "فيديو";
   }
 
-  if (message?.document) {
+  if (
+    message?.document
+  ) {
     return "ملفات";
   }
 
-  if (message?.animation) {
+  if (
+    message?.animation
+  ) {
     return "GIF";
   }
 
-  if (message?.audio) {
+  if (
+    message?.audio
+  ) {
     return "صوتيات";
   }
 
-  if (message?.voice) {
+  if (
+    message?.voice
+  ) {
     return "رسائل صوتية";
   }
 
-  if (message?.contact) {
+  if (
+    message?.contact
+  ) {
     return "جهات اتصال";
   }
 
@@ -509,7 +762,9 @@ function mediaReason(message) {
    كشف المخالفات
 ========================================================= */
 
-function hasLink(text) {
+function hasLink(
+  text
+) {
   return (
     /(https?:\/\/|www\.)\S+/i.test(
       text
@@ -520,22 +775,31 @@ function hasLink(text) {
   );
 }
 
-function hasAd(text) {
+function hasAd(
+  text
+) {
   return /(للبيع|بيع|شراء|خصم|متجر|متجرنا|اعلان|إعلان|اعلانات|إعلانات|للتواصل|تواصل معنا|اطلب|سعر خاص|عرض خاص|خدمات|رقم التواصل)/i.test(
     text
   );
 }
 
-function hasEnglish(text) {
+function hasEnglish(
+  text
+) {
   return /[A-Za-z]{2,}/.test(
     text
   );
 }
 
-function hasMention(ctx) {
+function hasMention(
+  ctx
+) {
   const entities = [
-    ...(ctx.message?.entities || []),
-    ...(ctx.message?.caption_entities || [])
+    ...(ctx.message?.entities ||
+      []),
+    ...(ctx.message
+      ?.caption_entities ||
+      [])
   ];
 
   return entities.some(
@@ -547,7 +811,9 @@ function hasMention(ctx) {
   );
 }
 
-function isForwarded(message) {
+function isForwarded(
+  message
+) {
   return !!(
     message?.forward_origin ||
     message?.forward_from ||
@@ -560,7 +826,8 @@ function violationReason(
   ctx,
   group
 ) {
-  const message = ctx.message;
+  const message =
+    ctx.message;
 
   if (!message) {
     return null;
@@ -703,11 +970,16 @@ function violationReason(
    السبام
 ========================================================= */
 
-const spamCache = new Map();
+const spamCache =
+  new Map();
 
-function spamReason(ctx, group) {
+function spamReason(
+  ctx,
+  group
+) {
   if (
-    !group.protection.spam ||
+    !group.protection
+      .spam ||
     !ctx.from ||
     !ctx.message
   ) {
@@ -717,20 +989,25 @@ function spamReason(ctx, group) {
   const key =
     `${ctx.chat.id}:${ctx.from.id}`;
 
-  const now = Date.now();
+  const now =
+    Date.now();
 
   const text =
     normalize(
-      getText(ctx.message)
+      getText(
+        ctx.message
+      )
     );
 
   const old =
-    spamCache.get(key) || [];
+    spamCache.get(key) ||
+    [];
 
   const fresh =
     old.filter(
       item =>
-        now - item.time <
+        now -
+          item.time <
         10000
     );
 
@@ -745,7 +1022,8 @@ function spamReason(ctx, group) {
   );
 
   if (
-    fresh.length >= 9
+    fresh.length >=
+    9
   ) {
     return "سبام";
   }
@@ -754,8 +1032,10 @@ function spamReason(ctx, group) {
     text &&
     fresh.filter(
       item =>
-        item.text === text
-    ).length >= 4
+        item.text ===
+        text
+    ).length >=
+      4
   ) {
     return "التكرار والسبام";
   }
@@ -807,7 +1087,9 @@ async function sendViolation(
    تسجيل التفاعل
 ========================================================= */
 
-function trackMessage(ctx) {
+function trackMessage(
+  ctx
+) {
   const group =
     ensureGroup(
       ctx.chat.id
@@ -823,12 +1105,15 @@ function trackMessage(ctx) {
       ctx.message.message_id,
 
     userId:
-      ctx.from?.id || 0,
+      ctx.from?.id ||
+      0,
 
     type,
 
     text:
-      getText(ctx.message),
+      getText(
+        ctx.message
+      ),
 
     time:
       Date.now()
@@ -857,16 +1142,21 @@ function trackMessage(ctx) {
     user.interactions++;
 
     user.points =
-      (user.points || 0) + 1;
+      (user.points || 0) +
+      1;
 
     group.points[
-      String(ctx.from.id)
+      String(
+        ctx.from.id
+      )
     ] =
       user.points;
 
     group.stats.messages =
-      (group.stats.messages || 0) +
-      1;
+      (
+        group.stats.messages ||
+        0
+      ) + 1;
   }
 }
 
@@ -979,9 +1269,16 @@ async function muteUser(
   }
 
   if (
+    isDeveloperUser(user)
+  ) {
+    return false;
+  }
+
+  if (
     !(await canTarget(
       ctx,
-      user.id
+      user.id,
+      user
     ))
   ) {
     return false;
@@ -1001,9 +1298,13 @@ async function muteUser(
     String(user.id)
   ] = {
     id: user.id,
+
     name:
-      user.first_name || "",
-    time: Date.now()
+      user.first_name ||
+      "",
+
+    time:
+      Date.now()
   };
 
   try {
@@ -1012,19 +1313,38 @@ async function muteUser(
       user.id,
       {
         permissions: {
-          can_send_messages: false,
-          can_send_audios: false,
-          can_send_documents: false,
-          can_send_photos: false,
-          can_send_videos: false,
-          can_send_video_notes: false,
-          can_send_voice_notes: false,
-          can_send_polls: false,
-          can_send_other_messages: false
+          can_send_messages:
+            false,
+
+          can_send_audios:
+            false,
+
+          can_send_documents:
+            false,
+
+          can_send_photos:
+            false,
+
+          can_send_videos:
+            false,
+
+          can_send_video_notes:
+            false,
+
+          can_send_voice_notes:
+            false,
+
+          can_send_polls:
+            false,
+
+          can_send_other_messages:
+            false
         }
       }
     );
   } catch {}
+
+  save();
 
   return true;
 }
@@ -1052,19 +1372,38 @@ async function unmuteUser(
       userId,
       {
         permissions: {
-          can_send_messages: true,
-          can_send_audios: true,
-          can_send_documents: true,
-          can_send_photos: true,
-          can_send_videos: true,
-          can_send_video_notes: true,
-          can_send_voice_notes: true,
-          can_send_polls: true,
-          can_send_other_messages: true
+          can_send_messages:
+            true,
+
+          can_send_audios:
+            true,
+
+          can_send_documents:
+            true,
+
+          can_send_photos:
+            true,
+
+          can_send_videos:
+            true,
+
+          can_send_video_notes:
+            true,
+
+          can_send_voice_notes:
+            true,
+
+          can_send_polls:
+            true,
+
+          can_send_other_messages:
+            true
         }
       }
     );
   } catch {}
+
+  save();
 }
 
 async function clearMutes(
@@ -1082,9 +1421,13 @@ async function clearMutes(
       : group.muted;
 
   const ids =
-    Object.keys(store);
+    Object.keys(
+      store
+    );
 
-  for (const id of ids) {
+  for (
+    const id of ids
+  ) {
     await unmuteUser(
       ctx,
       Number(id)
@@ -1101,7 +1444,8 @@ async function clearMutes(
 bot.start(
   async ctx => {
     const payload =
-      ctx.startPayload || "";
+      ctx.startPayload ||
+      "";
 
     if (
       payload.startsWith(
@@ -1111,30 +1455,45 @@ bot.start(
       const id =
         payload.slice(8);
 
-      let found = null;
+      let found =
+        null;
 
-      for (const group of Object.values(
-        db
-      )) {
+      for (
+        const group of Object.values(
+          db
+        )
+      ) {
         if (
-          group.pendingWhispers?.[id]
+          group.pendingWhispers?.[
+            id
+          ]
         ) {
           found = {
             group,
+
             data:
-              group.pendingWhispers[id]
+              group.pendingWhispers[
+                id
+              ]
           };
+
           break;
         }
 
         if (
-          group.whispers?.[id]
+          group.whispers?.[
+            id
+          ]
         ) {
           found = {
             group,
+
             data:
-              group.whispers[id]
+              group.whispers[
+                id
+              ]
           };
+
           break;
         }
       }
@@ -1150,13 +1509,17 @@ bot.start(
 
       if (
         ctx.from.id ===
-        w.senderId &&
-        found.group.pendingWhispers?.[id]
+          w.senderId &&
+        found.group
+          .pendingWhispers?.[
+          id
+        ]
       ) {
-        w.waiting = true;
+        w.waiting =
+          true;
 
         return ctx.reply(
-          "أرسل الهمسة الآن 💌\n\nيدعم النص والصورة والملصق و GIF."
+          "• أرسل الآن الهمسة\n• يمكنك إرسال نص أو ملصق أو صورة أو قيف\n-"
         );
       }
 
@@ -1198,15 +1561,22 @@ async function sendWhisperContent(
     false;
 
   group.whispers[
-    String(whisper.id)
-  ] = whisper;
+    String(
+      whisper.id
+    )
+  ] =
+    whisper;
 
   delete group.pendingWhispers[
-    String(whisper.id)
+    String(
+      whisper.id
+    )
   ];
 
   const id =
-    String(whisper.id);
+    String(
+      whisper.id
+    );
 
   const keyboard =
     Markup.inlineKeyboard([
@@ -1216,6 +1586,7 @@ async function sendWhisperContent(
           `whisper_view_${id}`
         )
       ],
+
       [
         Markup.button.callback(
           "رد على الهمسه",
@@ -1226,17 +1597,34 @@ async function sendWhisperContent(
 
   await ctx.telegram.sendMessage(
     whisper.chatId,
-    `💌 وصلت همسة إلى ${mention({
-      id: whisper.recipientId,
+
+    `• ياحلو ↤︎ ${mention({
+      id:
+        whisper.recipientId,
+
       first_name:
         whisper.recipientName
-    })}`,
+    })}
+
+• وصلتك همسة سرية من ↤︎ ${mention({
+      id:
+        whisper.senderId,
+
+      first_name:
+        whisper.senderName
+    })}
+
+• انت وحدك تقدر تشوفها`,
+
     {
       parse_mode:
         "HTML",
+
       ...keyboard
     }
   );
+
+  save();
 
   return ctx.reply(
     "تم إرسال الهمسة 💌"
@@ -1261,17 +1649,29 @@ async function showWhisperPrivate(
   }
 
   try {
-    if (content.text) {
+    if (
+      content.text
+    ) {
       return ctx.reply(
-        `💌 ${content.text}`
+        `💌 ${escapeHtml(
+          content.text
+        )}`,
+        {
+          parse_mode:
+            "HTML"
+        }
       );
     }
 
-    if (content.photo) {
+    if (
+      content.photo
+    ) {
       return ctx.replyWithPhoto(
         content.photo[
-          content.photo.length - 1
+          content.photo.length -
+            1
         ].file_id,
+
         {
           caption:
             "💌 همسة"
@@ -1279,15 +1679,22 @@ async function showWhisperPrivate(
       );
     }
 
-    if (content.sticker) {
+    if (
+      content.sticker
+    ) {
       return ctx.replyWithSticker(
-        content.sticker.file_id
+        content.sticker
+          .file_id
       );
     }
 
-    if (content.animation) {
+    if (
+      content.animation
+    ) {
       return ctx.replyWithAnimation(
-        content.animation.file_id,
+        content.animation
+          .file_id,
+
         {
           caption:
             "💌 همسة"
@@ -1295,9 +1702,12 @@ async function showWhisperPrivate(
       );
     }
 
-    if (content.video) {
+    if (
+      content.video
+    ) {
       return ctx.replyWithVideo(
         content.video.file_id,
+
         {
           caption:
             "💌 همسة"
@@ -1305,9 +1715,19 @@ async function showWhisperPrivate(
       );
     }
 
-    if (content.voice) {
+    if (
+      content.voice
+    ) {
       return ctx.replyWithVoice(
         content.voice.file_id
+      );
+    }
+
+    if (
+      content.audio
+    ) {
+      return ctx.replyWithAudio(
+        content.audio.file_id
       );
     }
 
@@ -1329,11 +1749,12 @@ bot.on(
   "callback_query",
   async ctx => {
     const data =
-      ctx.callbackQuery.data ||
+      ctx.callbackQuery
+        .data ||
       "";
 
     /* -----------------------------------------
-       همسة - رؤية
+       رؤية الهمسة
     ----------------------------------------- */
 
     if (
@@ -1343,14 +1764,21 @@ bot.on(
     ) {
       const id =
         data.slice(
-          "whisper_view_".length
+          "whisper_view_"
+            .length
         );
+
+      const message =
+        ctx.callbackQuery
+          .message;
+
+      if (!message) {
+        return ctx.answerCbQuery();
+      }
 
       const group =
         ensureGroup(
-          ctx.callbackQuery
-            .message
-            .chat.id
+          message.chat.id
         );
 
       const whisper =
@@ -1364,7 +1792,8 @@ bot.on(
         return ctx.answerCbQuery(
           "هذه الهمسة ليست لك.",
           {
-            show_alert: true
+            show_alert:
+              true
           }
         );
       }
@@ -1378,7 +1807,7 @@ bot.on(
     }
 
     /* -----------------------------------------
-       همسة - رد
+       رد على الهمسة
     ----------------------------------------- */
 
     if (
@@ -1388,14 +1817,21 @@ bot.on(
     ) {
       const id =
         data.slice(
-          "whisper_reply_".length
+          "whisper_reply_"
+            .length
         );
+
+      const message =
+        ctx.callbackQuery
+          .message;
+
+      if (!message) {
+        return ctx.answerCbQuery();
+      }
 
       const group =
         ensureGroup(
-          ctx.callbackQuery
-            .message
-            .chat.id
+          message.chat.id
         );
 
       const whisper =
@@ -1409,7 +1845,8 @@ bot.on(
         return ctx.answerCbQuery(
           "هذه الهمسة ليست لك.",
           {
-            show_alert: true
+            show_alert:
+              true
           }
         );
       }
@@ -1445,7 +1882,8 @@ bot.on(
         return ctx.answerCbQuery(
           "ما عندك صلاحية.",
           {
-            show_alert: true
+            show_alert:
+              true
           }
         );
       }
@@ -1457,13 +1895,19 @@ bot.on(
         parts[1];
 
       const roleIndex =
-        Number(parts[2]);
+        Number(
+          parts[2]
+        );
 
       const roles =
-        Object.keys(ROLES);
+        Object.keys(
+          ROLES
+        );
 
       const role =
-        roles[roleIndex];
+        roles[
+          roleIndex
+        ];
 
       if (!role) {
         return ctx.answerCbQuery(
@@ -1478,12 +1922,28 @@ bot.on(
 
       const user =
         group.users[
-          String(userId)
+          String(
+            userId
+          )
         ];
 
       if (!user) {
         return ctx.answerCbQuery(
           "المستخدم غير مسجل."
+        );
+      }
+
+      if (
+        user.username &&
+        user.username.toLowerCase() ===
+          DEV_USERNAME.toLowerCase()
+      ) {
+        return ctx.answerCbQuery(
+          "هذا المستخدم محمي.",
+          {
+            show_alert:
+              true
+          }
         );
       }
 
@@ -1496,7 +1956,9 @@ bot.on(
 
       await ctx.reply(
         `• تم رفع رتبة ${mention({
-          id: Number(userId),
+          id:
+            Number(userId),
+
           first_name:
             user.name
         })}\n• الرتبة ↤︎ ${escapeHtml(
@@ -1519,7 +1981,10 @@ bot.on(
 
 bot.on(
   "message",
-  async (ctx, next) => {
+  async (
+    ctx,
+    next
+  ) => {
     if (
       ctx.chat.type !==
       "private"
@@ -1527,17 +1992,21 @@ bot.on(
       return next();
     }
 
-    for (const group of Object.values(
-      db
-    )) {
+    for (
+      const group of Object.values(
+        db
+      )
+    ) {
       /* -----------------------------------------
          محتوى الهمسة
       ----------------------------------------- */
 
-      for (const whisper of Object.values(
-        group.pendingWhispers ||
-          {}
-      )) {
+      for (
+        const whisper of Object.values(
+          group.pendingWhispers ||
+            {}
+        )
+      ) {
         if (
           whisper.senderId ===
             ctx.from.id &&
@@ -1556,10 +2025,12 @@ bot.on(
          رد الهمسة
       ----------------------------------------- */
 
-      for (const whisper of Object.values(
-        group.whispers ||
-          {}
-      )) {
+      for (
+        const whisper of Object.values(
+          group.whispers ||
+            {}
+        )
+      ) {
         if (
           whisper.waitingReply &&
           whisper.replyUserId ===
@@ -1577,14 +2048,18 @@ bot.on(
 
               await ctx.telegram.sendMessage(
                 whisper.senderId,
+
                 `💌 رد على همستك:\n${escapeHtml(
                   text
                 )}`,
+
                 {
                   parse_mode:
                     "HTML"
                 }
               );
+
+              save();
 
               return ctx.reply(
                 "تم إرسال الرد 💌"
@@ -1595,9 +2070,12 @@ bot.on(
               ctx.message.photo
             ) {
               const photo =
-                ctx.message.photo[
-                  ctx.message.photo
-                    .length - 1
+                ctx.message
+                  .photo[
+                  ctx.message
+                    .photo
+                    .length -
+                    1
                 ].file_id;
 
               await ctx.telegram.sendPhoto(
@@ -1609,6 +2087,8 @@ bot.on(
                 }
               );
 
+              save();
+
               return ctx.reply(
                 "تم إرسال الرد 💌"
               );
@@ -1619,9 +2099,13 @@ bot.on(
             ) {
               await ctx.telegram.sendSticker(
                 whisper.senderId,
+
                 ctx.message
-                  .sticker.file_id
+                  .sticker
+                  .file_id
               );
+
+              save();
 
               return ctx.reply(
                 "تم إرسال الرد 💌"
@@ -1633,13 +2117,54 @@ bot.on(
             ) {
               await ctx.telegram.sendAnimation(
                 whisper.senderId,
+
                 ctx.message
-                  .animation.file_id,
+                  .animation
+                  .file_id,
+
                 {
                   caption:
                     "💌 رد على همستك"
                 }
               );
+
+              save();
+
+              return ctx.reply(
+                "تم إرسال الرد 💌"
+              );
+            }
+
+            if (
+              ctx.message.voice
+            ) {
+              await ctx.telegram.sendVoice(
+                whisper.senderId,
+
+                ctx.message
+                  .voice
+                  .file_id
+              );
+
+              save();
+
+              return ctx.reply(
+                "تم إرسال الرد 💌"
+              );
+            }
+
+            if (
+              ctx.message.audio
+            ) {
+              await ctx.telegram.sendAudio(
+                whisper.senderId,
+
+                ctx.message
+                  .audio
+                  .file_id
+              );
+
+              save();
 
               return ctx.reply(
                 "تم إرسال الرد 💌"
@@ -1690,16 +2215,20 @@ bot.on(
       );
 
     if (
-      !group.protection.enabled ||
-      !group.protection.auto ||
-      !group.protection.edit
+      !group.protection
+        .enabled ||
+      !group.protection
+        .auto ||
+      !group.protection
+        .edit
     ) {
       return;
     }
 
     if (
-      levelOf(ctx.from.id) >
-      0
+      levelOf(
+        ctx.from.id
+      ) > 0
     ) {
       return;
     }
@@ -1750,7 +2279,10 @@ bot.on(
 
 bot.on(
   "message",
-  async (ctx, next) => {
+  async (
+    ctx,
+    next
+  ) => {
     if (
       !ctx.chat ||
       ctx.chat.type ===
@@ -1810,10 +2342,13 @@ bot.on(
     ----------------------------------------- */
 
     if (
-      group.protection.enabled &&
-      group.protection.auto &&
-      levelOf(ctx.from.id) ===
-        0 &&
+      group.protection
+        .enabled &&
+      group.protection
+        .auto &&
+      levelOf(
+        ctx.from.id
+      ) === 0 &&
       !(await isTelegramAdmin(
         ctx,
         ctx.from.id
@@ -1846,8 +2381,9 @@ bot.on(
     trackMessage(ctx);
 
     const text =
-      getText(message)
-        .trim();
+      getText(
+        message
+      ).trim();
 
     /* =====================================================
        الهمسات
@@ -1892,7 +2428,8 @@ bot.on(
           target.first_name ||
           "",
 
-        waiting: false,
+        waiting:
+          false,
 
         createdAt:
           Date.now()
@@ -1905,9 +2442,9 @@ bot.on(
         `https://t.me/${me.username}?start=whisper_${id}`;
 
       return ctx.reply(
-        `💌 ${mention(
+        `• تم تحديد الهمسه لـ ↤︎ ${mention(
           target
-        )}\nاضغط «اهمس هنا» لإرسال همسة خاصة.`,
+        )}\n• اضغط «اهمس هنا» لكتابة الهمسة`,
         {
           parse_mode:
             "HTML",
@@ -2021,13 +2558,23 @@ bot.on(
           target
         );
 
-      user.messages = 0;
-      user.interactions = 0;
-      user.points = 0;
+      user.messages =
+        0;
+
+      user.interactions =
+        0;
+
+      user.points =
+        0;
 
       group.points[
-        String(target.id)
-      ] = 0;
+        String(
+          target.id
+        )
+      ] =
+        0;
+
+      save();
 
       return ctx.reply(
         `• تم تصفير تفاعل ${mention(
@@ -2049,14 +2596,10 @@ bot.on(
         text
       )
     ) {
-      /*
-        حسب طلبك:
-        تنظيف للمستخدمين اللي رتبتهم عضو فقط.
-      */
-
       if (
-        levelOf(ctx.from.id) !==
-        0
+        levelOf(
+          ctx.from.id
+        ) !== 0
       ) {
         return;
       }
@@ -2069,7 +2612,8 @@ bot.on(
       const amount =
         Math.min(
           Number(
-            match?.[1] || 20
+            match?.[1] ||
+              20
           ),
           100
         );
@@ -2078,7 +2622,8 @@ bot.on(
         group.messages
           .slice(-amount);
 
-      let deleted = 0;
+      let deleted =
+        0;
 
       for (
         const item of list
@@ -2096,8 +2641,12 @@ bot.on(
       group.messages =
         group.messages.filter(
           item =>
-            !list.includes(item)
+            !list.includes(
+              item
+            )
         );
+
+      save();
 
       return ctx.reply(
         `• تم تنظيف ( ${deleted} ) من الرسائل`
@@ -2147,10 +2696,12 @@ bot.on(
         return;
       }
 
-      group.protection.enabled =
+      group.protection
+        .enabled =
         true;
 
-      group.settings.violationsEnabled =
+      group.settings
+        .violationsEnabled =
         true;
 
       return ctx.reply(
@@ -2176,10 +2727,12 @@ bot.on(
         return;
       }
 
-      group.protection.enabled =
+      group.protection
+        .enabled =
         false;
 
-      group.settings.violationsEnabled =
+      group.settings
+        .violationsEnabled =
         false;
 
       return ctx.reply(
@@ -2249,6 +2802,9 @@ bot.on(
       "السبام":
         "spam",
 
+      "التكرار":
+        "spam",
+
       "الاعلانات":
         "ads",
 
@@ -2282,10 +2838,16 @@ bot.on(
       "GIF":
         "gifs",
 
+      "القيف":
+        "gifs",
+
       "الصوتيات":
         "audio",
 
       "الرسائل الصوتية":
+        "voice",
+
+      "الفويس":
         "voice",
 
       "جهات الاتصال":
@@ -2298,6 +2860,9 @@ bot.on(
         "english",
 
       "الردود من القروبات":
+        "crossGroupReplies",
+
+      "الردود من قروبات ثانية":
         "crossGroupReplies",
 
       "الكلمات الممنوعة":
@@ -2336,7 +2901,8 @@ bot.on(
 
       group.protection[
         key
-      ] = enabled;
+      ] =
+        enabled;
 
       return ctx.reply(
         `• ${
@@ -2541,7 +3107,8 @@ bot.on(
       if (
         !(await canTarget(
           ctx,
-          target.id
+          target.id,
+          target
         ))
       ) {
         return ctx.reply(
@@ -2602,7 +3169,8 @@ bot.on(
       if (
         !(await canTarget(
           ctx,
-          target.id
+          target.id,
+          target
         ))
       ) {
         return ctx.reply(
@@ -2654,7 +3222,8 @@ bot.on(
       if (
         !(await canTarget(
           ctx,
-          target.id
+          target.id,
+          target
         ))
       ) {
         return ctx.reply(
@@ -2733,6 +3302,8 @@ bot.on(
           "\n• من قبل مكتوم";
       }
 
+      save();
+
       return ctx.reply(
         output,
         {
@@ -2781,12 +3352,24 @@ bot.on(
         );
       }
 
+      if (
+        isDeveloperUser(
+          target
+        )
+      ) {
+        return ctx.reply(
+          "هذا المستخدم رتبته محمية."
+        );
+      }
+
       const user =
         setUser(
           group,
           target,
           role
         );
+
+      save();
 
       return ctx.reply(
         `• تم رفع رتبة ${mention(
@@ -2863,13 +3446,15 @@ bot.on(
           const photo =
             photos.photos[0][
               photos.photos[0]
-                .length - 1
+                .length -
+                1
             ].file_id;
 
           return ctx.replyWithPhoto(
             photo,
             {
               caption,
+
               parse_mode:
                 "HTML"
             }
@@ -3057,12 +3642,15 @@ bot.on(
           .map(
             user =>
               mention({
-                id: user.id,
+                id:
+                  user.id,
+
                 first_name:
                   user.name
               })
           )
           .join(" "),
+
         {
           parse_mode:
             "HTML"
@@ -3102,8 +3690,12 @@ bot.on(
         );
       }
 
+      save();
+
       return ctx.reply(
-        `• تمت إضافة الكلمة الممنوعة: ${word}`
+        `• تمت إضافة الكلمة الممنوعة: ${escapeHtml(
+          word
+        )}`
       );
     }
 
@@ -3129,18 +3721,20 @@ bot.on(
             deleteWord[1].trim()
         );
 
+      save();
+
       return ctx.reply(
         "• تم حذف الكلمة الممنوعة"
       );
     }
 
     /* =====================================================
-       بحث الأغاني في يوتيوب
+       يوتيوب - بحث + تشغيل صوت
     ===================================================== */
 
     const musicMatch =
       text.match(
-        /^(بحث|بحث أغنية|بحث اغنية|أغنية|اغنية|شغل|تشغيل|يوتيوب)\s+(.+)$/i
+        /^(بحث|بحث أغنية|بحث اغنية|أغنية|اغنية|شغل|تشغيل|يوتيوب|يوت)\s+(.+)$/i
       );
 
     if (
@@ -3158,9 +3752,14 @@ bot.on(
 
         const videos =
           result.videos
-            .slice(0, 5);
+            .slice(
+              0,
+              5
+            );
 
-        if (!videos.length) {
+        if (
+          !videos.length
+        ) {
           return ctx.reply(
             "ما لقيت نتائج."
           );
@@ -3168,13 +3767,16 @@ bot.on(
 
         const buttons =
           videos.map(
-            (video, index) => [
-              Markup.button.url(
+            (
+              video,
+              index
+            ) => [
+              Markup.button.callback(
                 `${index + 1} - ${video.title.slice(
                   0,
                   45
                 )}`,
-                video.url
+                `ytplay_${video.videoId}`
               )
             ]
           );
@@ -3228,7 +3830,8 @@ bot.on(
           .split("|");
 
       if (
-        parts.length >= 2
+        parts.length >=
+        2
       ) {
         const command =
           parts[0].trim();
@@ -3241,7 +3844,10 @@ bot.on(
 
         group.customReplies[
           command
-        ] = reply;
+        ] =
+          reply;
+
+        save();
 
         return ctx.reply(
           "• تم إضافة الرد"
@@ -3270,7 +3876,8 @@ bot.on(
     ===================================================== */
 
     if (
-      group.settings.botReplies
+      group.settings
+        .botReplies
     ) {
       if (
         text ===
@@ -3282,7 +3889,8 @@ bot.on(
       }
 
       if (
-        text === "هلا"
+        text ===
+        "هلا"
       ) {
         return ctx.reply(
           "هلا وغلا 👋"
@@ -3290,7 +3898,8 @@ bot.on(
       }
 
       if (
-        text === "بوت"
+        text ===
+        "بوت"
       ) {
         return ctx.reply(
           "سمّ 😎"
@@ -3299,6 +3908,112 @@ bot.on(
     }
 
     return next();
+  }
+);
+
+/* =========================================================
+   تشغيل زر تشغيل أغنية
+========================================================= */
+
+bot.action(
+  /^ytplay_(.+)$/,
+  async ctx => {
+    const videoId =
+      ctx.match[1];
+
+    try {
+      await ctx.answerCbQuery(
+        "جاري تحميل الصوت..."
+      );
+
+      const result =
+        await ytSearch(
+          `https://www.youtube.com/watch?v=${videoId}`
+        );
+
+      const video =
+        result.videos.find(
+          item =>
+            item.videoId ===
+            videoId
+        ) ||
+        result.videos[0];
+
+      if (!video) {
+        return ctx.reply(
+          "تعذر العثور على الأغنية."
+        );
+      }
+
+      const audio =
+        await downloadYoutubeAudio(
+          videoId
+        );
+
+      if (
+        !audio ||
+        !audio.length
+      ) {
+        return ctx.reply(
+          "تعذر تحميل الصوت."
+        );
+      }
+
+      const duration =
+        Number(
+          video.seconds || 0
+        );
+
+      const performer =
+        video.author?.name ||
+        "YouTube";
+
+      await ctx.replyWithAudio(
+        {
+          source:
+            audio,
+
+          filename:
+            `${video.title
+              .replace(
+                /[\\/:*?"<>|]/g,
+                ""
+              )
+              .slice(
+                0,
+                80
+              )}.webm`
+        },
+        {
+          title:
+            video.title,
+
+          performer,
+
+          duration:
+            duration ||
+            undefined,
+
+          caption:
+            `🎵 ${escapeHtml(
+              video.title
+            )}\n• من يوتيوب`,
+          parse_mode:
+            "HTML"
+        }
+      );
+    } catch (error) {
+      console.error(
+        "YouTube Audio Error:",
+        error
+      );
+
+      try {
+        await ctx.reply(
+          "تعذر تحميل الصوت من يوتيوب حاليًا. قد تكون نتيجة البحث غير قابلة للتحميل."
+        );
+      } catch {}
+    }
   }
 );
 
@@ -3330,17 +4045,13 @@ setInterval(
       const recent =
         group.messages.filter(
           item =>
-            now - item.time <
+            now -
+              item.time <
             48 *
               60 *
               60 *
               1000
         );
-
-      /*
-        المطلوب:
-        تنظيف الملصقات كل دقيقتين
-      */
 
       const stickers =
         recent
@@ -3372,6 +4083,8 @@ setInterval(
         } catch {}
       }
     }
+
+    save();
   },
   120000
 );
@@ -3395,12 +4108,14 @@ setInterval(
       )
     ) {
       group.messages =
-        (group.messages || [])
-          .filter(
-            message =>
-              message.time >
-              limit
-          );
+        (
+          group.messages ||
+          []
+        ).filter(
+          message =>
+            message.time >
+            limit
+        );
     }
 
     save();
@@ -3451,7 +4166,9 @@ bot.catch(
       error
     );
 
-    process.exit(1);
+    process.exit(
+      1
+    );
   }
 })();
 
@@ -3463,6 +4180,7 @@ process.once(
   "SIGINT",
   () => {
     save();
+
     bot.stop(
       "SIGINT"
     );
@@ -3473,6 +4191,7 @@ process.once(
   "SIGTERM",
   () => {
     save();
+
     bot.stop(
       "SIGTERM"
     );
