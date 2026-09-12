@@ -40,6 +40,7 @@ function loadData() {
         DATA_FILE,
         JSON.stringify(DEFAULT_DATA, null, 2)
       );
+
       return JSON.parse(JSON.stringify(DEFAULT_DATA));
     }
 
@@ -76,7 +77,7 @@ function saveData() {
 }
 
 /* =========================================================
-   الرتب
+   الرتب الداخلية للبوت
 ========================================================= */
 
 const ROLES = {
@@ -204,7 +205,10 @@ function getUserLevel(userId) {
 
   if (!user) return 0;
 
-  if (user.username?.toLowerCase() === DEV_USERNAME.toLowerCase()) {
+  if (
+    String(user.username || "").toLowerCase() ===
+    DEV_USERNAME.toLowerCase()
+  ) {
     return 7;
   }
 
@@ -226,27 +230,29 @@ async function getChatUser(ctx, userId) {
   }
 }
 
+/*
+   مهم:
+   رتبة البوت الداخلية منفصلة عن "رفع مشرف".
+   المشرف في تيليجرام لا يتحول تلقائيًا إلى مالك داخل البوت.
+*/
+
 async function getLevel(ctx, userId) {
   const member = await getChatUser(ctx, userId);
 
+  /*
+     مالك القروب له صلاحية المالك الأساسية
+     داخل أوامر الإدارة، لكن المشرف العادي
+     لا يتحول تلقائيًا إلى "مالك".
+  */
+
   if (
     member &&
-    (
-      member.status === "creator" ||
-      member.status === "administrator"
-    )
+    member.status === "creator"
   ) {
-    if (member.status === "creator") {
-      return 3;
-    }
-
-    const internal = getUserLevel(userId);
-
-    if (internal > 0) {
-      return internal;
-    }
-
-    return 2;
+    return Math.max(
+      3,
+      getUserLevel(userId)
+    );
   }
 
   return getUserLevel(userId);
@@ -295,18 +301,35 @@ function mention(user) {
 
 async function safeReply(ctx, text, extra = {}) {
   try {
-    return await ctx.reply(text, {
+    const options = {
       parse_mode: "HTML",
       ...extra
-    });
+    };
+
+    /*
+       أي رد يرسله البوت من أمر داخل رسالة
+       يصير Reply على نفس رسالة الأمر تلقائيًا.
+    */
+
+    if (
+      ctx?.message?.message_id &&
+      !options.reply_parameters
+    ) {
+      options.reply_parameters = {
+        message_id: ctx.message.message_id
+      };
+    }
+
+    return await ctx.reply(text, options);
   } catch (err) {
     console.error("Reply error:", err.message);
     return null;
   }
 }
 
-async function replyCommand(ctx, text) {
+async function replyCommand(ctx, text, extra = {}) {
   return safeReply(ctx, text, {
+    ...extra,
     reply_parameters: {
       message_id: ctx.message?.message_id
     }
@@ -363,6 +386,20 @@ async function canActOnTarget(ctx, targetId) {
     ctx,
     targetId
   );
+
+  /*
+     حماية إضافية:
+     لا يمكن التصرف على مالك القروب.
+  */
+
+  const targetMember =
+    await getChatUser(ctx, targetId);
+
+  if (
+    targetMember?.status === "creator"
+  ) {
+    return false;
+  }
 
   return actorLevel > targetLevel;
 }
@@ -585,17 +622,41 @@ function randomId() {
 }
 
 function getWhisperButton(id) {
+  const username =
+    String(
+      bot.botInfo?.username ||
+      process.env.BOT_USERNAME ||
+      ""
+    ).replace(/^@/, "");
+
+  if (!username) {
+    return Markup.inlineKeyboard([
+      [
+        Markup.button.callback(
+          "رؤية الهمسه",
+          `view_whisper_${id}`
+        )
+      ],
+      [
+        Markup.button.callback(
+          "رد على الهمسه",
+          `reply_whisper_${id}`
+        )
+      ]
+    ]);
+  }
+
   return Markup.inlineKeyboard([
     [
       Markup.button.url(
         "رؤية الهمسه",
-        `https://t.me/${process.env.BOT_USERNAME || "bot"}?start=whisper_${id}`
+        `https://t.me/${username}?start=whisper_${id}`
       )
     ],
     [
       Markup.button.url(
         "رد على الهمسه",
-        `https://t.me/${process.env.BOT_USERNAME || "bot"}?start=whisperreply_${id}`
+        `https://t.me/${username}?start=whisperreply_${id}`
       )
     ]
   ]);
@@ -644,7 +705,7 @@ async function createWhisper(ctx) {
   }
 
   if (!content) {
-    await safeReply(
+    await replyCommand(
       ctx,
       "• رد على رسالة ثم اكتب اهمس"
     );
@@ -663,11 +724,16 @@ async function createWhisper(ctx) {
       ? `@${ctx.from.username}`
       : ctx.from.first_name;
 
-  await ctx.reply(
+  await replyCommand(
+    ctx,
     `• وصلت همسة من ${escapeHtml(username)}`,
     getWhisperButton(id)
   );
 }
+
+/* =========================================================
+   START + الهمسات
+========================================================= */
 
 bot.start(async ctx => {
   const payload =
@@ -759,7 +825,7 @@ bot.start(async ctx => {
 
     await safeReply(
       ctx,
-      `• ارسل ردك الآن`
+      "• ارسل ردك الآن"
     );
 
     whisperStore[
@@ -806,33 +872,71 @@ async function handleInteraction(ctx) {
 }
 
 /* =========================================================
-   صلاحياتي
+   الصلاحيات الفعلية للمشرف
 ========================================================= */
 
-const PERMISSIONS = {
-  can_manage_chat: "إدارة القروب",
-  can_delete_messages: "حذف الرسائل",
-  can_manage_video_chats: "إدارة المكالمات",
-  can_restrict_members: "تقييد الأعضاء",
-  can_promote_members: "إضافة مشرفين",
-  can_change_info: "تغيير معلومات القروب",
-  can_invite_users: "إضافة أعضاء",
-  can_pin_messages: "تثبيت الرسائل",
-  can_manage_topics: "إدارة المواضيع",
-  can_post_stories: "نشر القصص",
-  can_edit_stories: "تعديل القصص",
-  can_delete_stories: "حذف القصص"
-};
+const ACTUAL_PERMISSIONS = [
+  [
+    "can_change_info",
+    "تغيير المعلومات"
+  ],
+  [
+    "can_pin_messages",
+    "تثبيت الرسائل"
+  ],
+  [
+    "can_manage_topics",
+    "ادارة المواضيع"
+  ],
+  [
+    "can_invite_users",
+    "اضافه مستخدمين"
+  ],
+  [
+    "can_delete_messages",
+    "مسح الرسائل"
+  ],
+  [
+    "can_restrict_members",
+    "حظر المستخدمين"
+  ],
+  [
+    "can_promote_members",
+    "اضافه المشرفين"
+  ]
+];
 
-function formatActualPermissions(member) {
+function formatActualPermissions(
+  member,
+  self = false
+) {
   if (!member) {
     return "• تعذر جلب صلاحيات المستخدم";
   }
 
-  if (member.status === "creator") {
+  const title = self
+    ? "• صلاحياتك بالإشراف :"
+    : "• صلاحياته بالإشراف :";
+
+  /*
+     مالك القروب:
+     تيليجرام لا يعرض نفس حقول الصلاحيات للمستخدم
+     creator، لذلك نعتبر كل الصلاحيات نعم.
+  */
+
+  if (
+    member.status === "creator"
+  ) {
     return [
-      "• الصلاحيات",
-      "• مالك القروب لديه جميع الصلاحيات"
+      title,
+      "━━━━━━━━━━━",
+      "• تغيير المعلومات ↤︎ نعم",
+      "• تثبيت الرسائل ↤︎ نعم",
+      "• ادارة المواضيع ↤︎ نعم",
+      "• اضافه مستخدمين ↤︎ نعم",
+      "• مسح الرسائل ↤︎ نعم",
+      "• حظر المستخدمين ↤︎ نعم",
+      "• اضافه المشرفين ↤︎ نعم"
     ].join("\n");
   }
 
@@ -840,28 +944,32 @@ function formatActualPermissions(member) {
     member.status !== "administrator"
   ) {
     return [
-      "• الصلاحيات",
-      "• المستخدم ليس مشرفًا"
+      title,
+      "━━━━━━━━━━━",
+      "• تغيير المعلومات ↤︎ لا",
+      "• تثبيت الرسائل ↤︎ لا",
+      "• ادارة المواضيع ↤︎ لا",
+      "• اضافه مستخدمين ↤︎ لا",
+      "• مسح الرسائل ↤︎ لا",
+      "• حظر المستخدمين ↤︎ لا",
+      "• اضافه المشرفين ↤︎ لا"
     ].join("\n");
   }
 
   const lines = [
-    "• الصلاحيات"
+    title,
+    "━━━━━━━━━━━"
   ];
 
   for (
-    const [key, label] of Object.entries(
-      PERMISSIONS
-    )
+    const [key, label] of ACTUAL_PERMISSIONS
   ) {
-    if (member[key] === true) {
-      lines.push(`• ${label}`);
-    }
-  }
-
-  if (lines.length === 1) {
     lines.push(
-      "• لا توجد صلاحيات إدارية مفعلة"
+      `• ${label} ↤︎ ${
+        member[key] === true
+          ? "نعم"
+          : "لا"
+      }`
     );
   }
 
@@ -923,6 +1031,7 @@ async function showOwner(ctx) {
   }
 
   let bio = "غير متوفر";
+
   let username = owner.username
     ? `@${owner.username}`
     : "غير متوفر";
@@ -969,7 +1078,12 @@ async function showOwner(ctx) {
         {
           caption:
             `• ${escapeHtml(username)}\n` +
-            `• ${escapeHtml(bio)}`
+            `• ${escapeHtml(bio)}`,
+          parse_mode: "HTML",
+          reply_parameters: {
+            message_id:
+              ctx.message?.message_id
+          }
         }
       );
     }
@@ -995,7 +1109,8 @@ async function cleanMessages(
     return;
   }
 
-  const g = ensureGroup(ctx.chat.id);
+  const g =
+    ensureGroup(ctx.chat.id);
 
   const targetType =
     Number(type);
@@ -1005,7 +1120,7 @@ async function cleanMessages(
     targetType < 0 ||
     targetType > 9
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• اختر نوع التنظيف من 0 إلى 9"
     );
@@ -1050,14 +1165,14 @@ async function cleanMessages(
 
   saveData();
 
-  await safeReply(
+  await replyCommand(
     ctx,
     `• تم تنظيف ${deleted} رسالة`
   );
 }
 
 /* =========================================================
-   كتم
+   الكتم
 ========================================================= */
 
 async function muteTarget(
@@ -1066,7 +1181,7 @@ async function muteTarget(
   global = false
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1078,7 +1193,7 @@ async function muteTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تتصرف على هذا المستخدم"
     );
@@ -1132,7 +1247,11 @@ async function muteTarget(
 
   return replyCommand(
     ctx,
-    `• المستخدم ذا ↤︎${mention(target)}\n• ${global ? "كتمته كتم عام" : "كتمته"}`
+    `• المستخدم ذا ↤︎${mention(target)}\n• ${
+      global
+        ? "كتمته كتم عام"
+        : "كتمته"
+    }`
   );
 }
 
@@ -1142,7 +1261,7 @@ async function unmuteTarget(
   global = false
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1154,7 +1273,7 @@ async function unmuteTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تتصرف على هذا المستخدم"
     );
@@ -1201,7 +1320,11 @@ async function unmuteTarget(
 
   return replyCommand(
     ctx,
-    `• المستخدم ذا ↤︎${mention(target)}\n• ${global ? "فكيت الكتم العام عنه" : "فكيت كتمه"}`
+    `• المستخدم ذا ↤︎${mention(target)}\n• ${
+      global
+        ? "فكيت الكتم العام عنه"
+        : "فكيت كتمه"
+    }`
   );
 }
 
@@ -1214,7 +1337,7 @@ async function banTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1226,7 +1349,7 @@ async function banTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تتصرف على هذا المستخدم"
     );
@@ -1243,7 +1366,7 @@ async function banTarget(
       `• المستخدم ذا ↤︎${mention(target)}\n• حظرته`
     );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أحظره\n• ${escapeHtml(err.message)}`
     );
@@ -1255,7 +1378,7 @@ async function unbanTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1275,7 +1398,7 @@ async function unbanTarget(
       `• المستخدم ذا ↤︎${mention(target)}\n• فكيت الحظر عنه`
     );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أفك الحظر\n• ${escapeHtml(err.message)}`
     );
@@ -1287,7 +1410,7 @@ async function kickTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1299,7 +1422,7 @@ async function kickTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تتصرف على هذا المستخدم"
     );
@@ -1324,7 +1447,7 @@ async function kickTarget(
       `• المستخدم ذا ↤︎${mention(target)}\n• طردته`
     );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أطرده\n• ${escapeHtml(err.message)}`
     );
@@ -1350,7 +1473,7 @@ async function promoteTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1365,7 +1488,7 @@ async function promoteTarget(
   if (
     target.id === ctx.from.id
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر ترفع نفسك"
     );
@@ -1386,7 +1509,7 @@ async function promoteTarget(
   if (
     actorLevel <= targetLevel
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر ترفع هذا المستخدم"
     );
@@ -1395,13 +1518,17 @@ async function promoteTarget(
   let botMember;
 
   try {
+    const botId =
+      bot.botInfo?.id ||
+      ctx.botInfo?.id;
+
     botMember =
       await ctx.telegram.getChatMember(
         ctx.chat.id,
-        ctx.botInfo.id
+        botId
       );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما قدرت أعرف صلاحيات البوت"
     );
@@ -1411,7 +1538,7 @@ async function promoteTarget(
     botMember.status !==
     "administrator"
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• لازم البوت يكون مشرف في القروب"
     );
@@ -1420,7 +1547,7 @@ async function promoteTarget(
   if (
     botMember.can_promote_members !== true
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• البوت ما عنده صلاحية إضافة مشرفين"
     );
@@ -1435,7 +1562,7 @@ async function promoteTarget(
         target.id
       );
   } catch {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما قدرت أجيب حالة المستخدم"
     );
@@ -1444,7 +1571,7 @@ async function promoteTarget(
   if (
     targetMember.status === "creator"
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر ترفع مالك القروب"
     );
@@ -1455,7 +1582,7 @@ async function promoteTarget(
       "administrator" &&
     targetMember.can_be_edited === false
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما أقدر أعدل على صلاحيات هذا المشرف"
     );
@@ -1478,15 +1605,13 @@ async function promoteTarget(
       rights
     );
 
-    ensureUser(target);
+    /*
+       مهم جدًا:
+       لا نعطيه رتبة "مالك" داخل البوت.
+       رفع مشرف = مشرف تيليجرام فقط.
+    */
 
-    if (
-      getUserLevel(target.id) < 2
-    ) {
-      data.users[
-        String(target.id)
-      ].role = "مالك";
-    }
+    ensureUser(target);
 
     saveData();
 
@@ -1505,13 +1630,13 @@ async function promoteTarget(
         "RIGHT_FORBIDDEN"
       )
     ) {
-      return safeReply(
+      return replyCommand(
         ctx,
         "• ما قدرت أرقّي المستخدم\n• صلاحيات البوت لا تسمح بمنح هذه الصلاحيات"
       );
     }
 
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أرقّي المستخدم\n• ${escapeHtml(err.message)}`
     );
@@ -1523,7 +1648,7 @@ async function demoteTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1535,7 +1660,7 @@ async function demoteTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تنزل هذا المستخدم"
     );
@@ -1556,12 +1681,6 @@ async function demoteTarget(
       }
     );
 
-    if (data.users[String(target.id)]) {
-      data.users[
-        String(target.id)
-      ].role = "عضو";
-    }
-
     saveData();
 
     return replyCommand(
@@ -1569,7 +1688,7 @@ async function demoteTarget(
       `• المستخدم ذا ↤︎${mention(target)}\n• تم تنزيل رتبته`
     );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أنزل رتبته\n• ${escapeHtml(err.message)}`
     );
@@ -1585,7 +1704,7 @@ async function restrictTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1597,7 +1716,7 @@ async function restrictTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تقيد هذا المستخدم"
     );
@@ -1628,7 +1747,7 @@ async function restrictTarget(
       `• المستخدم ذا ↤︎${mention(target)}\n• قيدته`
     );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أقيده\n• ${escapeHtml(err.message)}`
     );
@@ -1640,7 +1759,7 @@ async function unrestrictTarget(
   target
 ) {
   if (!target) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• رد على المستخدم"
     );
@@ -1652,7 +1771,7 @@ async function unrestrictTarget(
       target.id
     ))
   ) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• ما تقدر تفك تقييد هذا المستخدم"
     );
@@ -1684,7 +1803,7 @@ async function unrestrictTarget(
       `• المستخدم ذا ↤︎${mention(target)}\n• الغيت تقييده`
     );
   } catch (err) {
-    return safeReply(
+    return replyCommand(
       ctx,
       `• ما قدرت أفك تقييده\n• ${escapeHtml(err.message)}`
     );
@@ -1792,15 +1911,18 @@ async function startAhkam(
 
   const game = getGame(ctx);
 
-  if (!ensureGroup(ctx.chat.id).gamesEnabled) {
-    return safeReply(
+  if (
+    !ensureGroup(ctx.chat.id)
+      .gamesEnabled
+  ) {
+    return replyCommand(
       ctx,
       "• الألعاب مقفلة"
     );
   }
 
   if (game.active) {
-    return safeReply(
+    return replyCommand(
       ctx,
       "• لعبة الأحكام شغالة بالفعل"
     );
@@ -1815,7 +1937,7 @@ async function startAhkam(
 
   saveData();
 
-  await safeReply(
+  await replyCommand(
     ctx,
     "• بدأت لعبة الأحكام\n• اللي يبي يشارك يكتب أنا\n• لإنهاء التسجيل اكتب نعم"
   );
@@ -1842,7 +1964,7 @@ async function joinAhkam(
     game.participants.push(id);
     saveData();
 
-    await safeReply(
+    await replyCommand(
       ctx,
       `• تم تسجيل ${escapeHtml(
         ctx.from.first_name || "المستخدم"
@@ -1874,10 +1996,11 @@ async function endAhkamRegistration(
   if (
     game.participants.length < 2
   ) {
-    await safeReply(
+    await replyCommand(
       ctx,
       "• لازم يشاركون شخصين على الأقل"
     );
+
     return true;
   }
 
@@ -1910,7 +2033,7 @@ async function endAhkamRegistration(
       String(pair.target)
     ];
 
-  await safeReply(
+  await replyCommand(
     ctx,
     `• الحكم ↤︎${mention(judgeUser)}\n• المحكوم عليه ↤︎${mention(targetUser)}\n• الحكم: اكتب حكمًا ترفيهيًا آمنًا على المحكوم عليه`
   );
@@ -1962,11 +2085,17 @@ async function nextAhkamRound(
       String(pair.target)
     ];
 
-  await safeReply(
+  await replyCommand(
     ctx,
     `• الحكم ↤︎${mention(judgeUser)}\n• المحكوم عليه ↤︎${mention(targetUser)}\n• الحكم: اكتب حكمًا ترفيهيًا آمنًا على المحكوم عليه`
   );
 }
+
+/*
+   انهاء احكام:
+   - صاحب اللعبة يقدر ينهيها.
+   - Myth فما فوق يقدر ينهيها أيضًا.
+*/
 
 async function endAhkam(
   ctx
@@ -1979,8 +2108,15 @@ async function endAhkam(
     return false;
   }
 
+  const level =
+    await getLevel(
+      ctx,
+      ctx.from.id
+    );
+
   if (
-    game.starter !== ctx.from.id
+    game.starter !== ctx.from.id &&
+    level < 4
   ) {
     return false;
   }
@@ -1994,7 +2130,7 @@ async function endAhkam(
 
   saveData();
 
-  await safeReply(
+  await replyCommand(
     ctx,
     "• انتهت لعبة الأحكام"
   );
@@ -2019,13 +2155,15 @@ async function closeGames(
   if (g.games?.ahkam) {
     g.games.ahkam.active = false;
     g.games.ahkam.registering = false;
+    g.games.ahkam.starter = null;
     g.games.ahkam.participants = [];
     g.games.ahkam.usedPairs = [];
+    g.games.ahkam.round = 0;
   }
 
   saveData();
 
-  await safeReply(
+  await replyCommand(
     ctx,
     "• تم قفل الألعاب"
   );
@@ -2047,7 +2185,7 @@ async function openGames(
 
   saveData();
 
-  await safeReply(
+  await replyCommand(
     ctx,
     "• تم فتح الألعاب"
   );
@@ -2140,6 +2278,21 @@ bot.on("message", async ctx => {
         await endAhkam(ctx);
 
       if (ended) return;
+
+      /*
+         إذا اللعبة موجودة لكن المستخدم
+         ما عنده صلاحية إيقافها، ما نخلي
+         الأمر يكمل لباقي الأوامر.
+      */
+
+      const game = getGame(ctx);
+
+      if (game.active) {
+        return replyCommand(
+          ctx,
+          "• ما تقدر تنهي لعبة الأحكام"
+        );
+      }
     }
 
     if (
@@ -2168,14 +2321,15 @@ bot.on("message", async ctx => {
             ctx.from.id
           );
 
-        return safeReply(
+        return replyCommand(
           ctx,
           formatActualPermissions(
-            member
+            member,
+            true
           )
         );
       } catch {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• تعذر جلب صلاحياتك"
         );
@@ -2190,7 +2344,7 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
@@ -2203,14 +2357,15 @@ bot.on("message", async ctx => {
             target.id
           );
 
-        return safeReply(
+        return replyCommand(
           ctx,
           formatActualPermissions(
-            member
+            member,
+            false
           )
         );
       } catch {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• تعذر جلب صلاحيات المستخدم"
         );
@@ -2303,7 +2458,7 @@ bot.on("message", async ctx => {
 
       saveData();
 
-      return safeReply(
+      return replyCommand(
         ctx,
         "• تم مسح المكتومين عام"
       );
@@ -2388,7 +2543,7 @@ bot.on("message", async ctx => {
     ------------------------- */
 
     if (
-      /^(رفع مشرف|رفع مشرف)$/i.test(text)
+      /^رفع مشرف$/i.test(text)
     ) {
       const target =
         await getRepliedUser(ctx);
@@ -2400,7 +2555,7 @@ bot.on("message", async ctx => {
     }
 
     /* -------------------------
-       تنزيل
+       تنزيل مشرف
     ------------------------- */
 
     if (
@@ -2436,7 +2591,7 @@ bot.on("message", async ctx => {
     if (
       /^تنظيف$/i.test(text)
     ) {
-      return safeReply(
+      return replyCommand(
         ctx,
         "• اكتب تنظيف ثم النوع من 0 إلى 9"
       );
@@ -2464,7 +2619,7 @@ bot.on("message", async ctx => {
 
       saveData();
 
-      return safeReply(
+      return replyCommand(
         ctx,
         "• تم فتح المخالفات"
       );
@@ -2488,7 +2643,7 @@ bot.on("message", async ctx => {
 
       saveData();
 
-      return safeReply(
+      return replyCommand(
         ctx,
         "• تم قفل المخالفات"
       );
@@ -2507,7 +2662,7 @@ bot.on("message", async ctx => {
           ctx.from.id
         );
 
-      return safeReply(
+      return replyCommand(
         ctx,
         `• رتبتك ↤︎ ${escapeHtml(
           getLevelName(level)
@@ -2522,7 +2677,7 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
@@ -2563,7 +2718,7 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
@@ -2587,7 +2742,7 @@ bot.on("message", async ctx => {
       if (
         actorLevel <= newLevel
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• ما تقدر تعطي هذه الرتبة"
         );
@@ -2602,7 +2757,7 @@ bot.on("message", async ctx => {
       if (
         actorLevel <= targetLevel
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• ما تقدر ترفع هذا المستخدم"
         );
@@ -2643,7 +2798,7 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
@@ -2667,7 +2822,7 @@ bot.on("message", async ctx => {
       if (
         actorLevel <= newLevel
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• ما تقدر تعطي هذه الرتبة"
         );
@@ -2682,7 +2837,7 @@ bot.on("message", async ctx => {
       if (
         actorLevel <= targetLevel
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• ما تقدر تنزل هذا المستخدم"
         );
@@ -2727,7 +2882,7 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
@@ -2739,7 +2894,7 @@ bot.on("message", async ctx => {
           target.id
         ))
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• ما تقدر تغير لقب هذا المستخدم"
         );
@@ -2778,7 +2933,7 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
@@ -2790,7 +2945,7 @@ bot.on("message", async ctx => {
           target.id
         ))
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• ما تقدر تغير لقب هذا المستخدم"
         );
@@ -2823,16 +2978,11 @@ bot.on("message", async ctx => {
         await getRepliedUser(ctx);
 
       if (!target) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على المستخدم"
         );
       }
-
-      const stored =
-        data.users[
-          String(target.id)
-        ];
 
       const level =
         await getLevel(
@@ -2870,7 +3020,7 @@ bot.on("message", async ctx => {
       if (
         !ctx.message.reply_to_message
       ) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على الرسالة"
         );
@@ -2907,7 +3057,7 @@ bot.on("message", async ctx => {
         ctx.message.reply_to_message;
 
       if (!reply) {
-        return safeReply(
+        return replyCommand(
           ctx,
           "• رد على الرسالة"
         );
@@ -2922,12 +3072,12 @@ bot.on("message", async ctx => {
           }
         );
 
-        return safeReply(
+        return replyCommand(
           ctx,
           "• تم تثبيت الرسالة"
         );
       } catch (err) {
-        return safeReply(
+        return replyCommand(
           ctx,
           `• ما قدرت أثبت الرسالة\n• ${escapeHtml(err.message)}`
         );
@@ -2954,12 +3104,12 @@ bot.on("message", async ctx => {
           ctx.chat.id
         );
 
-        return safeReply(
+        return replyCommand(
           ctx,
           "• تم إلغاء التثبيت"
         );
       } catch (err) {
-        return safeReply(
+        return replyCommand(
           ctx,
           `• ما قدرت ألغي التثبيت\n• ${escapeHtml(err.message)}`
         );
@@ -2986,7 +3136,7 @@ bot.on("message", async ctx => {
 
       saveData();
 
-      return safeReply(
+      return replyCommand(
         ctx,
         "• تم قفل القروب"
       );
@@ -3008,7 +3158,7 @@ bot.on("message", async ctx => {
 
       saveData();
 
-      return safeReply(
+      return replyCommand(
         ctx,
         "• تم فتح القروب"
       );
@@ -3025,9 +3175,11 @@ bot.on("message", async ctx => {
       const user =
         ensureUser(ctx.from);
 
-      return safeReply(
+      return replyCommand(
         ctx,
-        `• إحصائياتك\n• الرسائل ↤︎ ${user.messages || 0}\n• التفاعل ↤︎ ${
+        `• إحصائياتك\n• الرسائل ↤︎ ${
+          user.messages || 0
+        }\n• التفاعل ↤︎ ${
           ensureGroup(
             ctx.chat.id
           ).interactions[
@@ -3044,9 +3196,9 @@ bot.on("message", async ctx => {
     if (
       /^(الالعاب|الألعاب)$/i.test(text)
     ) {
-      return safeReply(
+      return replyCommand(
         ctx,
-        "• الألعاب المتوفرة\n• الأحكام\n• لبدء اللعبة اكتب احكام"
+        "• الألعاب المتوفرة\n• الأحكام\n• لبدء اللعبة اكتب احكام\n• لإيقافها اكتب انهاء احكام"
       );
     }
 
@@ -3057,12 +3209,13 @@ bot.on("message", async ctx => {
     if (
       /^(اوامر|أوامر|مساعدة)$/i.test(text)
     ) {
-      return safeReply(
+      return replyCommand(
         ctx,
         [
           "• أوامر ايف",
           "• اهمس",
           "• احكام",
+          "• انهاء احكام",
           "• صلاحياتي",
           "• صلاحياته",
           "• المالك",
@@ -3093,7 +3246,7 @@ bot.on("message", async ctx => {
       g.customCommands[text];
 
     if (custom) {
-      return safeReply(
+      return replyCommand(
         ctx,
         String(custom)
       );
@@ -3171,13 +3324,13 @@ bot.on("message", async ctx => {
             !mentionsTarget &&
             !isReplyToTarget
           ) {
-            return safeReply(
+            return replyCommand(
               ctx,
               `• لازم يكون الحكم على ${targetMention} أو يكون ردًا على رسالته`
             );
           }
 
-          await safeReply(
+          await replyCommand(
             ctx,
             `• تم تسجيل الحكم على ${targetMention}`
           );
