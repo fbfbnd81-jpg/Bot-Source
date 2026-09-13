@@ -1272,57 +1272,6 @@ bot.on('text', async (ctx, next) => {
    21) بحث الأغاني والتشغيل
    ========================================================================== */
 
-// تحميل الصوت من يوتيوب وتحويله إلى mp3 عبر ffmpeg، ثم إرساله كملف صوتي
-// برسالة تحمل واجهة مشغل تيليجرام الطبيعية (عنوان + فنان + مدة + زر تشغيل/إيقاف)
-const os = require('os');
-let ffmpegPath = null;
-let fluentFfmpeg = null;
-try { ffmpegPath = require('ffmpeg-static'); } catch (e) { /* اختياري */ }
-try { fluentFfmpeg = require('fluent-ffmpeg'); } catch (e) { /* اختياري */ }
-if (fluentFfmpeg && ffmpegPath) fluentFfmpeg.setFfmpegPath(ffmpegPath);
-
-async function downloadSongAsMp3(url) {
-  if (!YouTube) throw new Error('مكتبة يوتيوب غير مثبتة');
-  const ytdl = require('@distube/ytdl-core');
-  if (!fluentFfmpeg) throw new Error('ffmpeg غير مثبت (ffmpeg-static / fluent-ffmpeg)');
-
-  const info = await ytdl.getInfo(url);
-  const title = info.videoDetails.title;
-  const performer = info.videoDetails.author ? info.videoDetails.author.name : 'غير معروف';
-  const durationSec = parseInt(info.videoDetails.lengthSeconds, 10) || undefined;
-
-  const outPath = path.join(os.tmpdir(), `song_${Date.now()}_${Math.floor(Math.random() * 9999)}.mp3`);
-  const audioStream = ytdl.downloadFromInfo(info, { filter: 'audioonly', quality: 'highestaudio' });
-
-  await new Promise((resolve, reject) => {
-    fluentFfmpeg(audioStream)
-      .audioBitrate(128)
-      .format('mp3')
-      .on('error', reject)
-      .on('end', resolve)
-      .save(outPath);
-  });
-
-  return { filePath: outPath, title, performer, durationSec };
-}
-
-async function sendSongToChat(ctx, url) {
-  const waitMsg = await ctx.reply('⏳ جاري تجهيز الأغنية...');
-  try {
-    const { filePath, title, performer, durationSec } = await downloadSongAsMp3(url);
-    await ctx.replyWithAudio(
-      { source: filePath },
-      { title, performer, duration: durationSec }
-    );
-    fs.unlink(filePath, () => {});
-  } catch (e) {
-    console.error('خطأ في تشغيل الأغنية:', e.message);
-    await ctx.reply('تعذر تجهيز الأغنية حاليًا. تأكد من تثبيت ffmpeg (راجع README) أو حاول لاحقًا.');
-  } finally {
-    await safeCall(() => ctx.telegram.deleteMessage(ctx.chat.id, waitMsg.message_id));
-  }
-}
-
 bot.hears(/^بحث (.+)$/, async (ctx) => {
   if (!isGroupChat(ctx)) return;
   const groupData = getGroup(ctx.chat.id);
@@ -1338,9 +1287,10 @@ bot.hears(/^بحث (.+)$/, async (ctx) => {
 bot.action(/^song_(.+)$/, async (ctx) => {
   await ctx.answerCbQuery('جاري التحضير...');
   const videoId = ctx.match[1];
-  const groupData = getGroup(ctx.chat.id);
-  if (!(await checkAllowed(ctx, groupData, 'play_song'))) return ctx.reply('لا تملك صلاحية كافية لتشغيل الأغاني.');
-  await sendSongToChat(ctx, `https://www.youtube.com/watch?v=${videoId}`);
+  await ctx.reply(
+    `🎵 تم اختيار المقطع.\nرابط المصدر: https://www.youtube.com/watch?v=${videoId}\n\n` +
+    `ملاحظة: تشغيل الصوت مباشرة داخل مكالمة صوتية بالمجموعة (Voice Chat) يتطلب مكوّنًا إضافيًا (userbot) خارج نطاق توكن البوت العادي - راجع ملاحظات التشغيل في نهاية الرد.`
+  );
 });
 
 bot.hears(/^تشغيل (.+)$/, async (ctx) => {
@@ -1350,7 +1300,11 @@ bot.hears(/^تشغيل (.+)$/, async (ctx) => {
   const query = ctx.match[1].trim();
   const results = await searchSongs(query);
   if (results.length === 0) return ctx.reply('لم يتم العثور على أغنية بهذا الاسم.');
-  await sendSongToChat(ctx, results[0].url);
+  const top = results[0];
+  await ctx.reply(
+    `▶️ جاري تجهيز: ${top.title} - ${top.channel}\nرابط المصدر: ${top.url}\n\n` +
+    `ملاحظة: يتطلب البث داخل Voice Chat الحقيقي إعداد إضافي (راجع نهاية التعليمات).`
+  );
 });
 
 /* ==========================================================================
